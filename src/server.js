@@ -432,7 +432,8 @@ function buildOnboardArgs(payload) {
       apiKey: "--anthropic-api-key",
       "openrouter-api-key": "--openrouter-api-key",
       "ai-gateway-api-key": "--ai-gateway-api-key",
-      "atlas-api-key": "--atlas-api-key",
+      // Atlas Cloud uses OpenAI-compatible API, so use --openai-api-key
+      "atlas-api-key": "--openai-api-key",
       "moonshot-api-key": "--moonshot-api-key",
       "kimi-code-api-key": "--kimi-code-api-key",
       "gemini-api-key": "--gemini-api-key",
