@@ -146,6 +146,23 @@ async function startGateway() {
 
   console.log(`[gateway] ========== TOKEN SYNC COMPLETE ==========`);
 
+  // Read OpenClaw config to get custom environment variables (e.g., for Atlas Cloud)
+  let openaiBaseUrl = undefined;
+  let openaiModel = undefined;
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath(), "utf8"));
+    openaiBaseUrl = config?.env?.OPENAI_BASE_URL;
+    openaiModel = config?.env?.OPENAI_MODEL;
+    if (openaiBaseUrl) {
+      console.log(`[gateway] Found OPENAI_BASE_URL in config: ${openaiBaseUrl}`);
+    }
+    if (openaiModel) {
+      console.log(`[gateway] Found OPENAI_MODEL in config: ${openaiModel}`);
+    }
+  } catch (err) {
+    console.warn(`[gateway] Could not read config for env vars: ${err.message}`);
+  }
+
   const args = [
     "gateway",
     "run",
@@ -159,19 +176,35 @@ async function startGateway() {
     OPENCLAW_GATEWAY_TOKEN,
   ];
 
+  const gatewayEnv = {
+    ...process.env,
+    OPENCLAW_STATE_DIR: STATE_DIR,
+    OPENCLAW_WORKSPACE_DIR: WORKSPACE_DIR,
+  };
+
+  // Add custom environment variables from config (for Atlas Cloud, etc.)
+  if (openaiBaseUrl) {
+    gatewayEnv.OPENAI_BASE_URL = openaiBaseUrl;
+  }
+  if (openaiModel) {
+    gatewayEnv.OPENAI_MODEL = openaiModel;
+  }
+
   gatewayProc = childProcess.spawn(OPENCLAW_NODE, clawArgs(args), {
     stdio: "inherit",
-    env: {
-      ...process.env,
-      OPENCLAW_STATE_DIR: STATE_DIR,
-      OPENCLAW_WORKSPACE_DIR: WORKSPACE_DIR,
-    },
+    env: gatewayEnv,
   });
 
   console.log(`[gateway] starting with command: ${OPENCLAW_NODE} ${clawArgs(args).join(" ")}`);
   console.log(`[gateway] STATE_DIR: ${STATE_DIR}`);
   console.log(`[gateway] WORKSPACE_DIR: ${WORKSPACE_DIR}`);
   console.log(`[gateway] config path: ${configPath()}`);
+  if (openaiBaseUrl) {
+    console.log(`[gateway] OPENAI_BASE_URL: ${openaiBaseUrl}`);
+  }
+  if (openaiModel) {
+    console.log(`[gateway] OPENAI_MODEL: ${openaiModel}`);
+  }
 
   gatewayProc.on("error", (err) => {
     console.error(`[gateway] spawn error: ${String(err)}`);
