@@ -11,11 +11,13 @@
     totalSteps: 5,
     isConfigured: false,
     authGroups: [],
+    atlasModels: [],
     formData: {
       authGroup: '',
       authChoice: '',
       authSecret: '',
       flow: 'quickstart',
+      atlasModel: 'minimaxai/minimax-m2.1',
       telegramToken: '',
       discordToken: '',
       slackBotToken: '',
@@ -34,6 +36,14 @@
     authSecret: null,
     authSecretToggle: null,
     flow: null,
+    atlasModelGroup: null,
+    atlasModel: null,
+    atlasModelInfo: null,
+    atlasModelName: null,
+    atlasModelDesc: null,
+    atlasModelContext: null,
+    atlasModelInput: null,
+    atlasModelOutput: null,
     telegramToken: null,
     discordToken: null,
     slackBotToken: null,
@@ -128,6 +138,14 @@
     els.authSecret = $('#authSecret');
     els.authSecretToggle = $('#authSecret-toggle');
     els.flow = $('#flow');
+    els.atlasModelGroup = $('#atlas-model-group');
+    els.atlasModel = $('#atlasModel');
+    els.atlasModelInfo = $('#atlas-model-info');
+    els.atlasModelName = $('#atlas-model-name');
+    els.atlasModelDesc = $('#atlas-model-desc');
+    els.atlasModelContext = $('#atlas-model-context');
+    els.atlasModelInput = $('#atlas-model-input');
+    els.atlasModelOutput = $('#atlas-model-output');
     els.telegramToken = $('#telegramToken');
     els.discordToken = $('#discordToken');
     els.slackBotToken = $('#slackBotToken');
@@ -251,6 +269,7 @@
     state.formData.authChoice = els.authChoice ? els.authChoice.value : '';
     state.formData.authSecret = els.authSecret ? els.authSecret.value : '';
     state.formData.flow = els.flow ? els.flow.value : 'quickstart';
+    state.formData.atlasModel = els.atlasModel ? els.atlasModel.value : 'minimaxai/minimax-m2.1';
     state.formData.telegramToken = els.telegramToken ? els.telegramToken.value : '';
     state.formData.discordToken = els.discordToken ? els.discordToken.value : '';
     state.formData.slackBotToken = els.slackBotToken ? els.slackBotToken.value : '';
@@ -271,6 +290,9 @@
     }
     if (els.flow && state.formData.flow) {
       els.flow.value = state.formData.flow;
+    }
+    if (els.atlasModel && state.formData.atlasModel) {
+      els.atlasModel.value = state.formData.atlasModel;
     }
     if (els.telegramToken && state.formData.telegramToken) {
       els.telegramToken.value = state.formData.telegramToken;
@@ -360,6 +382,27 @@
     setText($('#review-authChoice'), authChoiceLabel || '-');
     setText($('#review-authSecret'), maskToken(state.formData.authSecret));
     setText($('#review-flow'), flowLabel || '-');
+
+    // Show Atlas Cloud model in review if selected
+    var atlasModelRow = $('#review-atlas-model-row');
+    var atlasModelEl = $('#review-atlasModel');
+    if (atlasModelRow && atlasModelEl) {
+      if (state.formData.authChoice === 'atlas-api-key' && state.formData.atlasModel) {
+        showElement(atlasModelRow);
+        // Find model name from models list
+        var modelName = state.formData.atlasModel;
+        for (var i = 0; i < state.atlasModels.length; i++) {
+          if (state.atlasModels[i].id === state.formData.atlasModel) {
+            modelName = state.atlasModels[i].name;
+            break;
+          }
+        }
+        setText(atlasModelEl, modelName);
+        atlasModelEl.style.color = 'var(--success)';
+      } else {
+        hideElement(atlasModelRow);
+      }
+    }
 
     // Channels
     var telegramEl = $('#review-telegram');
@@ -459,6 +502,75 @@
       opt2.textContent = o.label + (o.hint ? ' - ' + o.hint : '');
       els.authChoice.appendChild(opt2);
     }
+
+    // Show/hide Atlas Cloud model dropdown
+    if (els.atlasModelGroup) {
+      if (selectedGroup && selectedGroup.value === 'atlas' && selectedGroup.models) {
+        state.atlasModels = selectedGroup.models;
+        populateAtlasModels(selectedGroup.models);
+        showElement(els.atlasModelGroup);
+        // Restore saved model selection
+        if (state.formData.atlasModel) {
+          els.atlasModel.value = state.formData.atlasModel;
+          updateAtlasModelInfo();
+        }
+      } else {
+        hideElement(els.atlasModelGroup);
+      }
+    }
+  }
+
+  // ===================================
+  // Atlas Cloud Model Selection
+  // ===================================
+  function populateAtlasModels(models) {
+    if (!els.atlasModel) return;
+
+    els.atlasModel.innerHTML = '';
+
+    // Add models to dropdown
+    for (var i = 0; i < models.length; i++) {
+      var m = models[i];
+      var opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.name;
+      els.atlasModel.appendChild(opt);
+    }
+
+    // Set up change handler
+    els.atlasModel.onchange = updateAtlasModelInfo;
+
+    // Show info for default/first model
+    updateAtlasModelInfo();
+  }
+
+  function updateAtlasModelInfo() {
+    if (!els.atlasModel || !els.atlasModelInfo || !state.atlasModels) return;
+
+    var selectedId = els.atlasModel.value;
+    var selectedModel = null;
+
+    for (var j = 0; j < state.atlasModels.length; j++) {
+      if (state.atlasModels[j].id === selectedId) {
+        selectedModel = state.atlasModels[j];
+        break;
+      }
+    }
+
+    if (selectedModel) {
+      showElement(els.atlasModelInfo);
+      if (els.atlasModelName) setText(els.atlasModelName, selectedModel.name);
+      if (els.atlasModelDesc) setText(els.atlasModelDesc, selectedModel.description || '');
+      if (els.atlasModelContext) setText(els.atlasModelContext, formatNumber(selectedModel.contextWindow / 1000) + 'K');
+      if (els.atlasModelInput) setText(els.atlasModelInput, selectedModel.inputPrice.toFixed(2));
+      if (els.atlasModelOutput) setText(els.atlasModelOutput, selectedModel.outputPrice.toFixed(2));
+    } else {
+      hideElement(els.atlasModelInfo);
+    }
+  }
+
+  function formatNumber(num) {
+    return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
 
   // ===================================
@@ -576,6 +688,7 @@
       flow: state.formData.flow,
       authChoice: state.formData.authChoice,
       authSecret: state.formData.authSecret,
+      atlasModel: state.formData.atlasModel,
       telegramToken: state.formData.telegramToken,
       discordToken: state.formData.discordToken,
       slackBotToken: state.formData.slackBotToken,
@@ -714,6 +827,7 @@
           authChoice: '',
           authSecret: '',
           flow: 'quickstart',
+          atlasModel: 'minimaxai/minimax-m2.1',
           telegramToken: '',
           discordToken: '',
           slackBotToken: '',

@@ -325,6 +325,64 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
       options: [
         { value: "atlas-api-key", label: "Atlas Cloud API key" },
       ],
+      models: [
+        {
+          id: "minimaxai/minimax-m2.1",
+          name: "MiniMax M2.1 (default)",
+          description: "Lightweight 10B model, optimized for coding",
+          contextWindow: 196600,
+          inputPrice: 0.30,
+          outputPrice: 1.20,
+        },
+        {
+          id: "deepseek-ai/deepseek-r1",
+          name: "DeepSeek R1",
+          description: "Reasoning-optimized model with chain-of-thought",
+          contextWindow: 163800,
+          inputPrice: 0.28,
+          outputPrice: 0.40,
+        },
+        {
+          id: "zai-org/glm-4.7",
+          name: "Z.AI GLM-4.7",
+          description: "Chinese-optimized large language model",
+          contextWindow: 202800,
+          inputPrice: 0.52,
+          outputPrice: 1.95,
+        },
+        {
+          id: "kwai-kat/kat-coder-pro",
+          name: "KwaiKAT Coder Pro",
+          description: "Specialized coding model with 256K context",
+          contextWindow: 256000,
+          inputPrice: 0.30,
+          outputPrice: 1.20,
+        },
+        {
+          id: "moonshot-ai/moonshot-v1-128k",
+          name: "Moonshot V1 128K",
+          description: "Long-context model (128K tokens)",
+          contextWindow: 262100,
+          inputPrice: 0.60,
+          outputPrice: 2.50,
+        },
+        {
+          id: "zhipu-ai/glm-4-5b-plus",
+          name: "Zhipu GLM-4 5B Plus",
+          description: "Efficient 5B parameter model",
+          contextWindow: 202800,
+          inputPrice: 0.44,
+          outputPrice: 1.74,
+        },
+        {
+          id: "qwen/qwen-2.5-coder-32b-instruct",
+          name: "Qwen 2.5 Coder 32B",
+          description: "Code-specialized model",
+          contextWindow: 262100,
+          inputPrice: 0.69,
+          outputPrice: 2.70,
+        },
+      ],
     },
     {
       value: "moonshot",
@@ -718,15 +776,16 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
 
       // Configure Atlas Cloud if selected (using OpenAI-compatible endpoint)
       if (payload.authChoice === "atlas-api-key") {
+        const atlasModel = payload.atlasModel || "minimaxai/minimax-m2.1";
         await runCmd(
           OPENCLAW_NODE,
           clawArgs(["config", "set", "env.OPENAI_BASE_URL", "https://api.atlascloud.ai/v1/"]),
         );
         await runCmd(
           OPENCLAW_NODE,
-          clawArgs(["config", "set", "env.OPENAI_MODEL", "minimaxai/minimax-m2.1"]),
+          clawArgs(["config", "set", "env.OPENAI_MODEL", atlasModel]),
         );
-        extra += "\n[atlas] configured Atlas Cloud with OpenAI-compatible endpoint (model: minimaxai/minimax-m2.1)\n";
+        extra += `\n[atlas] configured Atlas Cloud with OpenAI-compatible endpoint (model: ${atlasModel})\n`;
       }
 
       // Apply changes immediately.

@@ -198,6 +198,34 @@
         </select>
         <span class="hint-text">Choose how detailed you want the configuration process to be.</span>
 
+        <!-- Atlas Cloud Model Selection (shown only when Atlas Cloud is selected) -->
+        <div id="atlas-model-group" hidden>
+          <label for="atlasModel">
+            Atlas Cloud Model
+            <span class="badge">Atlas Cloud</span>
+          </label>
+          <select id="atlasModel">
+            <option value="">Loading models...</option>
+          </select>
+          <span class="hint-text">Select the AI model to use from Atlas Cloud. Each model has different capabilities and pricing.</span>
+          <div id="atlas-model-info" class="info-box" style="margin-top: 0.75rem;" hidden>
+            <div style="display: flex; justify-content: space-between; align-items: start; gap: 1rem;">
+              <div style="flex: 1;">
+                <strong id="atlas-model-name">Model Name</strong>
+                <p id="atlas-model-desc" class="muted" style="margin: 0.25rem 0 0.5rem 0;">Model description</p>
+              </div>
+              <div style="text-align: right; white-space: nowrap;">
+                <div class="muted" style="font-size: 0.875rem;">
+                  <span id="atlas-model-context">0K</span> context
+                </div>
+                <div class="muted" style="font-size: 0.875rem;">
+                  $<span id="atlas-model-input">0.00</span>/M in · $<span id="atlas-model-output">0.00</span>/M out
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div id="step2-error" class="error-message" role="alert" aria-live="polite" hidden></div>
       </div>
     </section>
@@ -311,6 +339,10 @@
           <div class="review-item">
             <span class="review-label">Auth Method:</span>
             <span class="review-value" id="review-authChoice">-</span>
+          </div>
+          <div class="review-item" id="review-atlas-model-row" hidden>
+            <span class="review-label">Atlas Cloud Model:</span>
+            <span class="review-value" id="review-atlasModel">-</span>
           </div>
           <div class="review-item">
             <span class="review-label">API Key:</span>
