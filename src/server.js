@@ -729,32 +729,44 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
 
       // Configure Atlas Cloud if selected (using OpenAI-compatible endpoint)
       if (payload.authChoice === "atlas-api-key") {
+        console.log("[atlas] Starting Atlas Cloud model configuration...");
+
         // Set OpenAI as the model provider
-        await runCmd(
+        console.log("[atlas] Setting model.provider to 'openai'...");
+        const providerResult = await runCmd(
           OPENCLAW_NODE,
           clawArgs(["config", "set", "model.provider", "openai"]),
         );
+        console.log(`[atlas] config set model.provider result: code=${providerResult.code}, output="${providerResult.output?.trim()}"`);
 
         // Set the primary model using the correct config key: model.primary
-        await runCmd(
+        console.log("[atlas] Setting model.primary to 'moonshotai/kimi-k2.5'...");
+        const modelResult = await runCmd(
           OPENCLAW_NODE,
           clawArgs(["config", "set", "model.primary", "moonshotai/kimi-k2.5"]),
         );
+        console.log(`[atlas] config set model.primary result: code=${modelResult.code}, output="${modelResult.output?.trim()}"`);
 
         // After setting the model, verify it was written correctly
+        console.log("[atlas] Verifying model.primary config...");
         const modelVerify = await runCmd(
           OPENCLAW_NODE,
           clawArgs(["config", "get", "model.primary"]),
         );
+        console.log(`[atlas] config get model.primary result: code=${modelVerify.code}, output="${modelVerify.output?.trim()}"`);
         extra += `\n[atlas] verified model.primary config: ${modelVerify.output || '(empty)'}\n`;
 
         const providerVerify = await runCmd(
           OPENCLAW_NODE,
           clawArgs(["config", "get", "model.provider"]),
         );
+        console.log(`[atlas] config get model.provider result: code=${providerVerify.code}, output="${providerVerify.output?.trim()}"`);
         extra += `\n[atlas] verified provider config: ${providerVerify.output || '(empty)'}\n`;
 
         extra += "\n[atlas] configured Atlas Cloud with OpenAI-compatible endpoint (provider: openai, model: moonshotai/kimi-k2.5)\n";
+
+        // Final verification
+        console.log("[atlas] Atlas Cloud configuration complete!");
       }
 
       // Apply changes immediately.
