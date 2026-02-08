@@ -463,7 +463,7 @@ function buildOnboardArgs(payload) {
   return args;
 }
 
-function runCmd(cmd, args, opts = {}) {
+function runCmd(cmd, args, opts = {}, extraEnv = {}) {
   return new Promise((resolve) => {
     const proc = childProcess.spawn(cmd, args, {
       ...opts,
@@ -471,6 +471,7 @@ function runCmd(cmd, args, opts = {}) {
         ...process.env,
         OPENCLAW_STATE_DIR: STATE_DIR,
         OPENCLAW_WORKSPACE_DIR: WORKSPACE_DIR,
+        ...extraEnv, // Add extra environment variables
       },
     });
 
@@ -510,7 +511,17 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
     console.log(`[onboard] Onboard command args include: --gateway-token ${OPENCLAW_GATEWAY_TOKEN.slice(0, 16)}...`);
     console.log(`[onboard] Full onboard command: node ${clawArgs(onboardArgs).join(' ').replace(OPENCLAW_GATEWAY_TOKEN, OPENCLAW_GATEWAY_TOKEN.slice(0, 16) + '...')}`);
 
-    const onboard = await runCmd(OPENCLAW_NODE, clawArgs(onboardArgs));
+    // For Atlas Cloud, pass environment variables to onboarding
+    // This ensures the OpenAI provider is configured with the correct base URL
+    let onboard;
+    if (payload.authChoice === "atlas-api-key") {
+      console.log(`[onboard] Running Atlas Cloud onboarding with OPENAI_BASE_URL=https://api.atlascloud.ai/v1/`);
+      onboard = await runCmd(OPENCLAW_NODE, clawArgs(onboardArgs), {}, {
+        OPENAI_BASE_URL: "https://api.atlascloud.ai/v1/",
+      });
+    } else {
+      onboard = await runCmd(OPENCLAW_NODE, clawArgs(onboardArgs));
+    }
 
     let extra = "";
 
@@ -718,17 +729,12 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
 
       // Configure Atlas Cloud if selected (using OpenAI-compatible endpoint)
       if (payload.authChoice === "atlas-api-key") {
-        // Set OpenAI as the model provider
+        // Set OpenAI as the model provider (verify)
         await runCmd(
           OPENCLAW_NODE,
           clawArgs(["config", "set", "model.provider", "openai"]),
         );
-        // Set the OpenAI-compatible base URL
-        await runCmd(
-          OPENCLAW_NODE,
-          clawArgs(["config", "set", "env.OPENAI_BASE_URL", "https://api.atlascloud.ai/v1/"]),
-        );
-        // Set the default model
+        // Set the default model (verify)
         await runCmd(
           OPENCLAW_NODE,
           clawArgs(["config", "set", "model", "minimaxai/minimax-m2.1"]),
