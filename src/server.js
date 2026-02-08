@@ -729,23 +729,24 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
 
       // Configure Atlas Cloud if selected (using OpenAI-compatible endpoint)
       if (payload.authChoice === "atlas-api-key") {
-        // Set OpenAI as the model provider (verify)
+        // Set OpenAI as the model provider
         await runCmd(
           OPENCLAW_NODE,
           clawArgs(["config", "set", "model.provider", "openai"]),
         );
-        // Set the default model (verify)
+
+        // Set the primary model using the correct config key: model.primary
         await runCmd(
           OPENCLAW_NODE,
-          clawArgs(["config", "set", "model", "moonshotai/kimi-k2.5"]),
+          clawArgs(["config", "set", "model.primary", "moonshotai/kimi-k2.5"]),
         );
 
         // After setting the model, verify it was written correctly
         const modelVerify = await runCmd(
           OPENCLAW_NODE,
-          clawArgs(["config", "get", "model"]),
+          clawArgs(["config", "get", "model.primary"]),
         );
-        extra += `\n[atlas] verified model config: ${modelVerify.output || '(empty)'}\n`;
+        extra += `\n[atlas] verified model.primary config: ${modelVerify.output || '(empty)'}\n`;
 
         const providerVerify = await runCmd(
           OPENCLAW_NODE,
