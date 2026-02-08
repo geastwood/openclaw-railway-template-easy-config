@@ -458,6 +458,13 @@ function buildOnboardArgs(payload) {
       // This is the Anthropics setup-token flow.
       args.push("--token-provider", "anthropic", "--token", secret);
     }
+
+    // For Atlas Cloud, specify the default model during onboarding
+    // This ensures the correct model is used from the start, rather than
+    // trying to override it after onboarding (which doesn't work reliably)
+    if (payload.authChoice === "atlas-api-key") {
+      args.push("--model", "moonshotai/kimi-k2.5");
+    }
   }
 
   return args;
