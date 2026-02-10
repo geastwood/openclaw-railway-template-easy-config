@@ -16,6 +16,7 @@
 10. [Testing & Validation](#testing--validation)
 11. [Troubleshooting](#troubleshooting)
 12. [References](#references)
+13. [Bonus: Advanced Integrations](#bonus-advanced-integrations)
 
 ---
 
@@ -1790,6 +1791,58 @@ After completing this tutorial:
 - **Openclaw Discord**: https://discord.gg/openclaw
 - **Openclaw Reddit**: https://reddit.com/r/OpenClaw
 - **Twitter/X**: [@OpenClawAI](https://twitter.com/OpenClawAI)
+
+---
+
+## Bonus: Advanced Integrations
+
+Beyond the core integrations covered in this tutorial, OpenClaw can be extended with powerful third-party services.
+
+### Magic Patterns: AI-Powered UI Generation
+
+[**Magic Patterns**](https://www.magicpatterns.com) is an AI design platform that generates production-ready UI designs from text descriptions. When integrated with OpenClaw, it enables:
+
+- **Visual Prototyping** - Generate UI mockups from natural language
+- **Code Export** - Get production-ready React, Vue, or HTML code
+- **Design System Integration** - Use custom presets for brand consistency
+- **Team Collaboration** - Share preview URLs for feedback
+
+#### Quick Example
+
+```
+User: Create a login page with email/password fields and social login buttons
+
+OpenClaw: [Calls Magic Patterns API]
+→ Generated preview: https://abc123-preview.magicpatterns.app
+→ Source code exported to workspace
+→ Editor URL: https://www.magicpatterns.com/c/abc123
+```
+
+#### Learn More
+
+📖 **[Complete Integration Guide →](./MAGICPATTERNS_INTEGRATION.md)**
+
+The guide covers:
+- Magic Patterns API setup and authentication
+- OpenClaw skill implementation
+- Railway deployment configuration
+- Usage examples and best practices
+- Troubleshooting common issues
+
+#### Integration Highlights
+
+| Feature | Description |
+|---------|-------------|
+| **Text-to-UI** | Generate designs from natural language |
+| **Multiple Presets** | Tailwind, shadcn/ui, Chakra UI, Mantine |
+| **Code Export** | Production-ready source code |
+| **Hosted Previews** | Share designs without rendering |
+
+#### Prerequisites
+
+- Magic Patterns account with API key
+- `MAGICPATTERNS_API_KEY` environment variable
+- OpenClaw skill installed (see guide)
 
 ---
 

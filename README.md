@@ -91,3 +91,4 @@ docker run --rm -p 8080:8080 \
 
 - **[Atlas Cloud Testing Guide](docs/ATLAS_CLOUD_TESTING.md)** - Step-by-step guide for deploying and testing OpenClaw with Atlas Cloud on Railway
 - **[Learning OpenClaw Tutorial](docs/learning-openclaw-tutorial.md)** - Comprehensive deployment and configuration tutorial
+- **[Magic Patterns Integration](docs/MAGICPATTERNS_INTEGRATION.md)** - Guide to integrating Magic Patterns AI design generation with OpenClaw
