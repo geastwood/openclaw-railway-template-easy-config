@@ -279,6 +279,8 @@ For the Wizard Flow, select 'Quickstart' to use sensible defaults."
 
 If you want to use OpenClaw in Discord, Telegram, or Slack, you can configure those here. Each platform requires a bot token that you get from their respective developer portals.
 
+For detailed step-by-step instructions on setting up Telegram with OpenClaw, check out the Telegram Setup Guide linked in the video description!
+
 If you're just getting started, I recommend skipping this for now. You can always add channels later through the OpenClaw control panel.
 
 Click 'Next' to continue."
@@ -613,6 +615,7 @@ OpenClaw works with Claude, GPT-4, Gemini, and cost-effective models from Atlas 
 - Railway: https://railway.app
 - Atlas Cloud: https://www.atlascloud.ai
 - ClawHub: https://clawhub.ai
+- Telegram Setup Guide: ./TELEGRAM_SETUP.md
 - Full Tutorial: https://github.com/[your-repo]/blob/main/docs/learning-openclaw-tutorial.md
 
 ### Thumbnail Text Suggestions
@@ -663,7 +666,7 @@ Template Deployment
 
 ---
 
-**Version:** 1.4
+**Version:** 1.5
 **Created:** 2026-02-10
 **Updated:** 2026-02-16
 **Based on:** learning-openclaw-tutorial.md (v1.0)
