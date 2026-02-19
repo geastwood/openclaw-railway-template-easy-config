@@ -277,7 +277,23 @@ function decodeCredentialsFromEnv() {
     const credentialsPath = path.join(credentialsDir, "client_secret.json");
 
     // Validate it's valid JSON before writing
-    JSON.parse(decoded); // Will throw if invalid
+    const parsed = JSON.parse(decoded); // Will throw if invalid
+
+    // Check if this is the placeholder (contains "note" key)
+    if (parsed.note && parsed.note.includes("Replace this with your actual")) {
+      console.log(`[credentials] ⚠️  GOOGLE_CLIENT_SECRET_BASE64 contains placeholder value`);
+      console.log(`[credentials] To use Google Workspace features:`);
+      console.log(`[credentials]   1. Create OAuth credentials at https://console.google.com`);
+      console.log(`[credentials]   2. Download client_secret.json`);
+      console.log(`[credentials]   3. Encode: base64 -w 0 client_secret.json`);
+      console.log(`[credentials]   4. Update GOOGLE_CLIENT_SECRET_BASE64 in Railway variables`);
+      return;
+    }
+
+    // Validate it's a proper client_secret.json (has required fields)
+    if (!parsed.installed && !parsed.web) {
+      throw new Error("Invalid client_secret.json format (missing 'installed' or 'web' key)");
+    }
 
     fs.writeFileSync(credentialsPath, decoded, { mode: 0o600 });
     console.log(`[credentials] ✅ Successfully decoded and wrote Google credentials to ${credentialsPath}`);

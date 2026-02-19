@@ -17,3 +17,9 @@ data = "/data"
 
 [variables]
 PORT = "8080"
+
+# Optional: Google OAuth credentials for gog skill (Google Workspace CLI)
+# Encode your client_secret.json file to base64 and paste it here
+# Run: base64 -w 0 client_secret.json
+# Leave as-is if not using Google Workspace features
+GOOGLE_CLIENT_SECRET_BASE64 = "eyJub3RlIjogIllvdXIgZ29vZ2xlIGNsaWVudF9zZWNyZXQuanNvbiBmaWxlIGJhc2U2NCBlbmNvZGVkIHZhbHVlIEdvIHRvIFtEdWFsXSBodHRwczovL2NvbnNvbGUuZ29vZ2xlLmNvbSB0byBjcmVhdGUgT0F1dGggY3JlZGVudGlhbHMuIFJlcGxhY2UgdGhpcyB3aXRoIHlvdXIgYWN0dWFsIGJhc2U2NCBlbmNvZGVkIHN0cmluZy4ifQ=="
