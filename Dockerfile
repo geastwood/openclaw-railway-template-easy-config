@@ -77,19 +77,21 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --prod --frozen-lockfile && pnpm store prune
 
-# Install uv for Python package management (needed for nano-pdf skill)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:${PATH}"
-
-# Install nano-pdf CLI for PDF editing skill (use --system to install globally)
-RUN uv pip install --system nano-pdf
-
-# Install Python PDF libraries for pdf skill
-RUN pip3 install pypdf pdfplumber reportlab pytesseract pdf2image && \
+# Install Python packages for PDF skills
+# Note: nano-pdf requires special handling due to PEP 668 (externally managed Python)
+# We'll install the core PDF libraries that work in most cases
+RUN pip3 install --break-system-packages pypdf pdfplumber reportlab pytesseract pdf2image && \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     poppler-utils tesseract-ocr libtesseract-dev && \
     rm -rf /var/lib/apt/lists/*
+
+# Install pipx for installing Python CLI applications globally
+RUN pip3 install --break-system-packages pipx
+
+# Install nano-pdf CLI using pipx (which manages its own virtual environment)
+RUN pipx install nano-pdf && \
+    pipx ensurepath
 
 # Copy built openclaw
 COPY --from=openclaw-build /openclaw /openclaw
