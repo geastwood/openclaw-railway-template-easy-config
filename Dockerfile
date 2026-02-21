@@ -93,7 +93,7 @@ RUN /opt/pdf-venv/bin/pip install --no-cache-dir pypdf pdfplumber reportlab && \
 # Add venv binaries to PATH for skill usage
 ENV PATH="/opt/pdf-venv/bin:${PATH}"
 
-# Install Chromium for Puppeteer (health portal scraper)
+# Install Chromium for Puppeteer (patient-health-portal-helper skill)
 # Use specific version to ensure compatibility
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -111,6 +111,16 @@ RUN apt-get update \
   && apt-get install -y google-chrome-stable \
   && rm -rf /var/lib/apt/lists/*
 
+# Copy all skills first (for dependency installation)
+COPY skills /tmp/skills
+
+# Install patient-health-portal-helper skill dependencies
+WORKDIR /tmp/skills/patient-health-portal-helper
+RUN npm install && npm cache clean --force
+
+# Return to app directory
+WORKDIR /app
+
 # Copy built openclaw
 COPY --from=openclaw-build /openclaw /openclaw
 
@@ -120,8 +130,8 @@ RUN printf '%s\n' '#!/usr/bin/env bash' 'exec node /openclaw/dist/entry.js "$@"'
 
 COPY src ./src
 
-# Copy ClawHub skills
-COPY skills /data/.openclaw/skills
+# Copy ClawHub skills (with installed dependencies)
+COPY --from=0 /tmp/skills /data/.openclaw/skills
 
 ENV PORT=8080
 EXPOSE 8080

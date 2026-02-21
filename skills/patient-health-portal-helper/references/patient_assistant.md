@@ -1325,25 +1325,7 @@ Total today: 2/2 medicines taken \U0001f4aa"
 
 ## Health Portal Scraper Implementation - Updated Status
 
-The health portal scraper is now implemented as a **standalone OpenClaw skill** called `patient-health-portal-helper`. This modular design allows the health portal functionality to be independently developed, maintained, and distributed via ClawHub.
-
-### Skill Location
-
-```
-skills/patient-health-portal-helper/
-├── SKILL.md                 # Skill documentation
-├── _meta.json              # Skill metadata
-├── .clawhub/origin.json    # ClawHub origin
-├── lib/                    # Implementation code
-│   ├── index.js            # Main entry point
-│   ├── package.json        # NPM dependencies
-│   ├── scrapers/           # Portal scrapers
-│   ├── parsers/            # Date/time parsers
-│   └── utils/              # Browser, crypto, logging
-└── references/             # Documentation
-    ├── portal_scraper_analysis.md
-    └── patient_assistant.md
-```
+The health portal scraper module has been fully implemented and is ready for deployment. See [PORTAL_SCRAPER_ANALYSIS.md](./PORTAL_SCRAPER_ANALYSIS.md) for detailed technical analysis.
 
 ### Updated Implementation Status
 
@@ -1369,28 +1351,20 @@ skills/patient-health-portal-helper/
 
 ### Module Structure
 
-The health portal functionality is implemented as an **OpenClaw skill** located at:
-
 ```
-skills/patient-health-portal-helper/
-├── SKILL.md                      # Skill documentation
-├── lib/
-│   ├── index.js                  # Main entry point and orchestration
-│   ├── google-calendar.js        # Google Calendar API client (via gog skill)
-│   ├── package.json              # NPM dependencies (puppeteer)
-│   ├── scrapers/
-│   │   ├── index.js              # Scraper factory with auto-detection
-│   │   ├── base.js               # Base scraper class
-│   │   └── shinepartners.js      # Shine Partners portal scraper
-│   ├── parsers/
-│   │   └── appointment-parser.js # Date/time parsing utilities
-│   └── utils/
-│       ├── browser.js            # Puppeteer browser setup
-│       ├── crypto.js             # AES-256-GCM encryption
-│       └── logger.js             # Logging utility
-└── references/                   # Additional documentation
-    ├── portal_scraper_analysis.md
-    └── patient_assistant.md
+src/health-portal/
+├── index.js              # Main entry point and orchestration
+├── google-calendar.js    # Google Calendar API client (via gog skill)
+├── scrapers/
+│   ├── index.js          # Scraper factory with auto-detection
+│   ├── base.js           # Base scraper class
+│   └── shinepartners.js  # Shine Partners portal scraper
+├── parsers/
+│   └── appointment-parser.js  # Date/time parsing utilities
+└── utils/
+    ├── browser.js        # Puppeteer browser setup
+    ├── crypto.js         # AES-256-GCM encryption
+    └── logger.js         # Logging utility
 ```
 
 ### Supported Portals
@@ -1445,7 +1419,6 @@ skills/patient-health-portal-helper/
 
 ### See Also
 
-- [Patient Health Portal Helper Skill](../skills/patient-health-portal-helper/SKILL.md) - Main skill documentation
-- [Portal Scraper Analysis](../skills/patient-health-portal-helper/references/portal_scraper_analysis.md) - Technical analysis
+- [Portal Scraper Analysis](./PORTAL_SCRAPER_ANALYSIS.md) - Technical analysis and scraping approach
 - [Railway Template Documentation](./README.md) - Deployment instructions
 
