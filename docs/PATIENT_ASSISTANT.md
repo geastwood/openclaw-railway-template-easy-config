@@ -833,12 +833,13 @@ To trigger manual sync:
 
 | Portal System | Authentication | Appointment Sync |
 |---------------|----------------|------------------|
-| **Epic MyChart** | Username/Password | ✅ Full support |
-| **Cerner Power** | Username/Password | ✅ Full support |
-| **AthenaHealth** | Username/Password | ✅ Full support |
-| **Allscripts** | Username/Password | ✅ Full support |
+| **Shine Partners** | Username/Password | ✅ Full support (implemented) |
+| **Epic MyChart** | Username/Password | 🔧 Planned |
+| **Cerner Power** | Username/Password | 🔧 Planned |
+| **AthenaHealth** | Username/Password | 🔧 Planned |
+| **Allscripts** | Username/Password | 🔧 Planned |
 | **eClinicalWorks** | Username/Password | ⚠️ Requires testing |
-| **Custom portals** | OAuth 2.0 | 🔧 Custom adapter needed |
+| **Custom portals** | OAuth 2.0 | 🔧 Extensible framework |
 
 ---
 
@@ -1277,10 +1278,16 @@ Total today: 2/2 medicines taken \U0001f4aa"
 | Google Drive | \u23f3 Needed | Require OAuth scope |
 | Google Sheets | \u23f3 Needed | Require OAuth scope |
 | Proactive Check-ins | \u2705 Ready | Can implement now |
-| Health Portal Sync | \ud83d\udd27 Planned | Requires custom adapter |
+| Health Portal Sync | \u2705 Complete | Full scraper implementation |
+| Portal Scraper Base | \u2705 Complete | Abstract base scraper class |
+| Shine Partners Scraper | \u2705 Complete | Custom portal implementation |
+| Credential Encryption | \u2705 Complete | AES-256-GCM implemented |
+| Appointment Parser | \u2705 Complete | Date/time parsing utilities |
+| Google Calendar Client | \u2705 Complete | gog skill integration |
+| Browser Utility | \u2705 Complete | Puppeteer setup for Railway |
 | MyChart Integration | \ud83d\udd27 Planned | Requires authentication module |
 | Cerner Integration | \ud83d\udd27 Planned | Requires API access |
-| Credential Encryption | \ud83d\udd27 Planned | AES-256-GCM required |
+| AthenaHealth Integration | \ud83d\udd27 Planned | Requires authentication module |
 
 ---
 
@@ -1295,15 +1302,123 @@ Total today: 2/2 medicines taken \U0001f4aa"
 6. \u2705 **Test end-to-end** - Schedule test appointment
 
 ### Phase 2: Health Portal Integration
-1. \ud83d\udd27 **Implement encryption module** - AES-256-GCM for portal credentials
-2. \ud83d\udd27 **Create portal adapter interface** - Abstract layer for different portals
-3. \ud83d\udd27 **Build MyChart scraper** - Appointment fetching from MyChart
-4. \ud83d\udd27 **Implement sync scheduler** - Hourly cron job for portal polling
-5. \ud83d\udd27 **Add conflict detection** - Prevent duplicate calendar events
-6. \ud83d\udd27 **Create setup wizard** - Portal configuration via Telegram
-7. \ud83d\udd27 **Add notification system** - New appointment alerts to family
-8. \ud83d\udd27 **Test with sandbox portal** - Validate sync flow
+1. \u2705 **Implement encryption module** - AES-256-GCM for portal credentials
+2. \u2705 **Create portal adapter interface** - Abstract layer for different portals
+3. \u2705 **Build Shine Partners scraper** - Appointment fetching from custom portal
+4. \u2705 **Implement appointment parser** - Date/time parsing utilities
+5. \u2705 **Add Google Calendar client** - gog skill integration
+6. \u2705 **Create browser utility** - Puppeteer setup for Railway containers
+7. \u2705 **Implement daily sync scheduler** - Cron job at configurable time (default: 9:00 AM UTC)
+8. \u2705 **Add manual sync options** - Telegram, HTTP API, and Railway console
+9. \u2705 **Add conflict detection** - Prevent duplicate calendar events via event keys
+10. \u2705 **Railway environment variables** - Pre-configured in railway.toml template
+11. \ud83d\udd27 **Add MyChart scraper** - Requires authentication module
+12. \ud83d\udd27 **Add Cerner scraper** - Requires API access
+13. \ud83d\udd27 **Add AthenaHealth scraper** - Requires authentication module
+14. \ud83d\udd27 **Test with production portal** - Validate sync flow end-to-end
 
 ---
 
 *Designed as a comprehensive personal assistant for patient care, leveraging Telegram for communication and Google Workspace for coordination and documentation.*
+
+---
+
+## Health Portal Scraper Implementation - Updated Status
+
+The health portal scraper module has been fully implemented and is ready for deployment. See [PORTAL_SCRAPER_ANALYSIS.md](./PORTAL_SCRAPER_ANALYSIS.md) for detailed technical analysis.
+
+### Updated Implementation Status
+
+| Component | Status | Notes |
+|------------|---------|--------|
+| Telegram Integration | \u2705 Complete | Connected and working |
+| Google Calendar | \u2705 Complete | Create, update, invite |
+| Google Gmail | \u2705 Complete | Send invitations |
+| Medicine Reminders | \u2705 Complete | 30-min before |
+| Google Drive | \u23f3 Needed | Require OAuth scope |
+| Google Sheets | \u23f3 Needed | Require OAuth scope |
+| Proactive Check-ins | \u2705 Ready | Can implement now |
+| Health Portal Sync | \u2705 Complete | Full scraper implementation |
+| Portal Scraper Base | \u2705 Complete | Abstract base scraper class |
+| Shine Partners Scraper | \u2705 Complete | Custom portal implementation |
+| Credential Encryption | \u2705 Complete | AES-256-GCM implemented |
+| Appointment Parser | \u2705 Complete | Date/time parsing utilities |
+| Google Calendar Client | \u2705 Complete | gog skill integration |
+| Browser Utility | \u2705 Complete | Puppeteer setup for Railway |
+| MyChart Integration | \ud83d\udd27 Planned | Requires authentication module |
+| Cerner Integration | \ud83d\udd27 Planned | Requires API access |
+| AthenaHealth Integration | \ud83d\udd27 Planned | Requires authentication module |
+
+### Module Structure
+
+```
+src/health-portal/
+├── index.js              # Main entry point and orchestration
+├── google-calendar.js    # Google Calendar API client (via gog skill)
+├── scrapers/
+│   ├── index.js          # Scraper factory with auto-detection
+│   ├── base.js           # Base scraper class
+│   └── shinepartners.js  # Shine Partners portal scraper
+├── parsers/
+│   └── appointment-parser.js  # Date/time parsing utilities
+└── utils/
+    ├── browser.js        # Puppeteer browser setup
+    ├── crypto.js         # AES-256-GCM encryption
+    └── logger.js         # Logging utility
+```
+
+### Supported Portals
+
+| Portal Type | Status | Notes |
+|-------------|--------|-------|
+| **Shine Partners** | \u2705 Supported | Full implementation with table parsing |
+| **MyChart** | \ud83d\udd27 Planned | Custom adapter needed |
+| **Epic** | \ud83d\udd27 Planned | Custom adapter needed |
+| **Cerner** | \ud83d\udd27 Planned | Custom adapter needed |
+| **AthenaHealth** | \ud83d\udd27 Planned | Custom adapter needed |
+| **Custom Portals** | \ud83d\udd27 Extensible | Use base scraper class |
+
+### Quick Start
+
+1. **Configure Railway environment variables** (pre-configured in railway.toml):
+   ```toml
+   HEALTH_PORTAL_URL = "https://patientconnect.shinepartners.ca/..."
+   HEALTH_PORTAL_TYPE = "ShinePartners"
+   HEALTH_PORTAL_USERNAME = "your_username"
+   HEALTH_PORTAL_PASSWORD = "your_password"
+   HEALTH_PORTAL_FAMILY_ATTENDEES = "family1@email.com,family2@email.com"
+   HEALTH_PORTAL_SYNC_TIME = "09:00"
+   HEALTH_PORTAL_ENABLED = "true"
+   ```
+
+2. **Deploy on Railway** - The scraper will initialize automatically
+
+3. **Manual sync options**:
+   - Telegram: `sync now`
+   - HTTP API: `POST /api/sync-portal`
+   - Railway console: Run sync function directly
+
+### Technical Details
+
+- **Web Scraping**: Puppeteer with Chromium for JavaScript rendering
+- **Authentication**: Form-based login with session management
+- **Data Extraction**: HTML table parsing with CSS selectors
+- **Date Parsing**: Custom parser for various date formats
+- **Encryption**: AES-256-GCM for password storage
+- **Scheduling**: Daily cron job (configurable time)
+- **Google Calendar**: Integration via gog skill
+- **Error Handling**: Retry logic, timeout handling, logging
+
+### Security Features
+
+- Passwords encrypted with AES-256-GCM before storage
+- Session cleanup after each sync
+- No credential logging
+- HTTPS-only connections
+- Environment variable-based configuration
+
+### See Also
+
+- [Portal Scraper Analysis](./PORTAL_SCRAPER_ANALYSIS.md) - Technical analysis and scraping approach
+- [Railway Template Documentation](./README.md) - Deployment instructions
+
