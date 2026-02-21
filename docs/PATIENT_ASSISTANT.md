@@ -186,8 +186,8 @@ sequenceDiagram
 
     Note over P,F: Health Portal Auto-Sync Flow
 
-    loop Hourly sync
-        OC->>HP: Login with credentials
+    loop Daily sync at 9:00 AM UTC
+        OC->>HP: Login with env var credentials
         HP-->>OC: Authentication success
         OC->>HP: GET /appointments/upcoming
         HP-->>OC: 12 appointments found
@@ -200,6 +200,18 @@ sequenceDiagram
         G-->>F: 2 email invitations
         OC->>TG: "Found 2 new appointments from portal"
     end
+
+    Note over P,OC: Manual Sync Trigger
+
+    P->>TG: "sync now"
+    TG->>OC: Manual sync request
+    OC->>HP: Login with credentials
+    HP-->>OC: Authentication success
+    OC->>HP: GET /appointments/upcoming
+    HP-->>OC: 12 appointments found
+    OC->>G: GET /calendars/primary/events
+    G-->>OC: 12 existing events (no changes)
+    OC->>TG: "No new appointments to sync"
 ```
 
 ### Railway Deployment Architecture
@@ -212,6 +224,7 @@ graph LR
             OG["OpenClaw Gateway - Port 18789"]
             SK["Skills Directory - /data/.openclaw/skills"]
             CR["Credentials - /data/.openclaw/credentials"]
+            HP["Health Portal Sync Module"]
         end
 
         subgraph "Persistent Volume"
@@ -225,27 +238,50 @@ graph LR
             EV1[SETUP_PASSWORD]
             EV2[GOOGLE_CLIENT_SECRET_BASE64]
             EV3[OPENCLAW_GATEWAY_TOKEN]
+            EV4[HEALTH_PORTAL_URL]
+            EV5[HEALTH_PORTAL_TYPE]
+            EV6[HEALTH_PORTAL_USERNAME]
+            EV7[HEALTH_PORTAL_PASSWORD]
+            EV8[HEALTH_PORTAL_FAMILY_ATTENDEES]
+            EV9[HEALTH_PORTAL_SYNC_TIME]
         end
 
         subgraph "Networking"
             PUB["Public URL - .up.railway.app"]
             HCK["Health Check - /setup/healthz"]
+            API["Manual Sync API - /api/sync-portal"]
         end
     end
 
     PUB -->|HTTP/WS| GW
     GW -->|Proxy| OG
     GW -->|Auth| HCK
+    GW -->|Manual Sync| API
+    API -->|Trigger| HP
     EV2 -->|Decode at startup| CR
+    EV4 -->|Load at startup| HP
+    EV5 -->|Load at startup| HP
+    EV6 -->|Load at startup| HP
+    EV7 -->|Load at startup| HP
+    EV8 -->|Load at startup| HP
+    EV9 -->|Schedule| HP
     SK -->|Load| OG
     VOL -->|Mount| Container
     CFG <-->|Read/Write| OG
+    HP -->|Daily| OG
 
     style PUB fill:#0f172a,stroke:#1e293b,color:#fff
     style GW fill:#7c3aed,stroke:#5b21b6,color:#fff
     style OG fill:#8b5cf6,stroke:#7c3aed,color:#fff
     style VOL fill:#f59e0b,stroke:#d97706,color:#fff
     style EV2 fill:#ef4444,stroke:#dc2626,color:#fff
+    style HP fill:#ea4335,stroke:#d33426,color:#fff
+    style EV4 fill:#ea4335,stroke:#d33426,color:#fff
+    style EV5 fill:#ea4335,stroke:#d33426,color:#fff
+    style EV6 fill:#ea4335,stroke:#d33426,color:#fff
+    style EV7 fill:#ea4335,stroke:#d33426,color:#fff
+    style EV8 fill:#ea4335,stroke:#d33426,color:#fff
+    style EV9 fill:#ea4335,stroke:#d33426,color:#fff
 ```
 
 ## Communication Channels
@@ -418,63 +454,193 @@ OpenClaw can automatically log into patient health portals (MyChart, Epic, Cerne
 
 #### Setup Configuration
 
-**Input via Telegram:**
+**Option 1: Railway Environment Variables (Recommended)**
+
+Configure health portal credentials in Railway dashboard for automatic deployment:
+
+| Environment Variable | Description | Example |
+|---------------------|-------------|---------|
+| `HEALTH_PORTAL_URL` | Health portal URL | `https://mychart.example.com` |
+| `HEALTH_PORTAL_TYPE` | Portal system type | `MyChart`, `Epic`, `Cerner`, `AthenaHealth` |
+| `HEALTH_PORTAL_USERNAME` | Portal login username | `john.doe@email.com` |
+| `HEALTH_PORTAL_PASSWORD` | Portal login password | `your_secure_password` |
+| `HEALTH_PORTAL_FAMILY_ATTENDEES` | Family emails to invite | `spouse@email.com,daughter@email.com` |
+| `HEALTH_PORTAL_SYNC_TIME` | Daily sync time (UTC) | `09:00` (9 AM UTC / 4 AM EST) |
+| `HEALTH_PORTAL_ENABLED` | Enable/disable sync | `true` or `false` |
+
+**Railway Setup Steps:**
+1. Go to Railway project → Variables tab
+2. The health portal environment variables are **pre-configured** in `railway.toml` as placeholders
+3. Edit each variable to replace `"Replace_Me"` with your actual values
+4. Set `HEALTH_PORTAL_ENABLED = "true"` to activate the sync
+5. Redeploy the service
+6. OpenClaw will automatically load credentials at startup
+
+**Quick Reference - railway.toml:**
+```toml
+# Pre-configured variables in Railway template
+HEALTH_PORTAL_URL = "Replace_Me"                # Your portal URL
+HEALTH_PORTAL_TYPE = "MyChart"                  # Portal type
+HEALTH_PORTAL_USERNAME = "Replace_Me"           # Your username
+HEALTH_PORTAL_PASSWORD = "Replace_Me"           # Your password
+HEALTH_PORTAL_FAMILY_ATTENDEES = ""             # Family emails (comma-separated)
+HEALTH_PORTAL_SYNC_TIME = "09:00"               # Daily sync time (UTC)
+HEALTH_PORTAL_ENABLED = "false"                 # Set to "true" to enable
+```
+
+**Option 2: Telegram Configuration**
+
 ```
 User: "Set up health portal sync for MyChart"
 
 OpenClaw:
-"I'll help you set up health portal sync.
+"Health portal sync is configured via Railway environment variables.
 
-Please provide:
-1. Portal URL: https://mychart.example.com
-2. Username: john.doe@email.com
-3. Password: [encrypted input]
-4. Family members to invite: spouse@email.com, daughter@email.com
+Current status:
+🏥 Portal: MyChart (https://mychart.example.com)
+👤 Username: john.doe@email.com
+👥 Family attendees: spouse@email.com, daughter@email.com
+🔄 Sync schedule: Daily at 9:00 AM UTC (4:00 AM EST)
+📅 Next sync: Tomorrow at 4:00 AM EST
 
-Reply with details or type 'cancel' to exit."
+Manual sync options:
+• Type 'sync now' to trigger immediate sync
+• Use Railway console: curl http://localhost:8080/api/sync-portal
+• Check logs: [credentials] Portal sync: X new appointments found"
 ```
 
-**OpenClaw Actions:**
+**OpenClaw Actions (load from Railway env vars):**
 ```python
-# Store encrypted credentials
+# Load configuration from Railway environment variables
+import os
+
 health_portal_config = {
-    "portal_url": "https://mychart.example.com",
-    "portal_type": "MyChart",  # or Epic, Cerner, Athena, etc.
-    "username": "john.doe@email.com",
-    "password": "encrypted_password_here",
-    "family_attendees": [
-        "spouse@email.com",
-        "daughter@email.com"
-    ],
-    "sync_frequency": "hourly",  # Check for new appointments
+    "portal_url": os.getenv("HEALTH_PORTAL_URL"),
+    "portal_type": os.getenv("HEALTH_PORTAL_TYPE", "MyChart"),
+    "username": os.getenv("HEALTH_PORTAL_USERNAME"),
+    "password": os.getenv("HEALTH_PORTAL_PASSWORD"),
+    "family_attendees": os.getenv("HEALTH_PORTAL_FAMILY_ATTENDEES", "").split(","),
+    "sync_time": os.getenv("HEALTH_PORTAL_SYNC_TIME", "09:00"),  # 9 AM UTC
+    "enabled": os.getenv("HEALTH_PORTAL_ENABLED", "true").lower() == "true",
     "auto_invite_family": True,
     "reminder_minutes": [1440, 60, 30]  # 1 day, 1 hour, 30 min
 }
+
+# Validate required fields
+if not all([health_portal_config["portal_url"],
+            health_portal_config["username"],
+            health_portal_config["password"]]):
+    print("[health-portal] ⚠️  Required credentials not configured in environment variables")
+    health_portal_config["enabled"] = False
 ```
 
-**Telegram Response:**
+**Startup Log Output:**
 ```
-✅ Health portal sync configured!
-
-🏥 Portal: MyChart (https://mychart.example.com)
-🔐 Credentials: Encrypted and stored
-👥 Family attendees: spouse@email.com, daughter@email.com
-🔄 Sync frequency: Every hour
-📅 Upcoming appointments will be synced automatically
-
-Next sync: Starting now...
+[health-portal] 🔧 Loading configuration from environment variables
+[health-portal] ✅ Portal URL: https://mychart.example.com
+[health-portal] ✅ Portal Type: MyChart
+[health-portal] ✅ Username: john.doe@email.com
+[health-portal] ✅ Family Attendees: spouse@email.com, daughter@email.com
+[health-portal] ✅ Sync Schedule: Daily at 09:00 UTC (04:00 EST)
+[health-portal] ✅ Portal Sync: ENABLED
+[health-portal] 📅 Next sync: 2026-02-22 09:00:00 UTC
 ```
 
 #### Automatic Sync Flow
 
-**Hourly Background Job:**
+**Daily Scheduled Sync (Cron):**
+```python
+# Runs once daily at configured time (default: 9:00 AM UTC)
+# Cron expression: 0 9 * * * (every day at 9:00 AM UTC)
+import schedule
+import time
+
+def daily_sync_job():
+    """Runs once per day at configured time"""
+    if not health_portal_config["enabled"]:
+        print("[health-portal] ⏸️  Sync disabled via HEALTH_PORTAL_ENABLED")
+        return
+
+    print(f"[health-portal] 🔄 Starting daily sync at {datetime.now()}")
+
+    try:
+        new_appointments = sync_health_portal_appointments()
+
+        if new_appointments:
+            print(f"[health-portal] ✅ Synced {len(new_appointments)} new appointments")
+            send_telegram_notification(new_appointments)
+        else:
+            print("[health-portal] ℹ️  No new appointments found")
+
+    except Exception as e:
+        print(f"[health-portal] ❌ Sync failed: {e}")
+        # Retry in 1 hour
+        schedule.every(1).hours.do(daily_sync_job).tag('retry')
+
+# Schedule daily sync
+sync_time = health_portal_config["sync_time"]  # "09:00"
+schedule.every().day.at(sync_time).do(daily_sync_job)
+
+# Keep the scheduler running
+while True:
+    schedule.run_pending()
+    time.sleep(60)
+```
+
+#### Manual Sync Options
+
+**Option 1: Telegram Command**
+```
+User: "sync now"
+
+OpenClaw:
+"🔄 Syncing with MyChart portal...
+
+✅ Logged in successfully
+✅ Fetched 12 upcoming appointments
+✅ 2 new appointments found
+✅ Created 2 Google Calendar events
+✅ Invited 2 family members
+
+📅 Total calendar events: 14
+Next scheduled sync: Tomorrow at 4:00 AM EST"
+```
+
+**Option 2: HTTP API Endpoint**
+```bash
+# Trigger sync via Railway console or external service
+curl -X POST http://your-app.up.railway.app/api/sync-portal \
+  -H "Authorization: Bearer YOUR_GATEWAY_TOKEN"
+
+# Response:
+{
+  "success": true,
+  "synced_at": "2026-02-21T14:30:00Z",
+  "new_appointments": 2,
+  "total_appointments": 14,
+  "message": "Sync completed successfully"
+}
+```
+
+**Option 3: Railway Console**
+```bash
+# Access Railway service console (Shell tab)
+curl -X POST http://localhost:8080/api/sync-portal
+
+# Or run the sync function directly
+node -e "require('./src/health-portal-sync.js').syncNow()"
+```
+
+#### Sync Function Implementation
+
 ```python
 def sync_health_portal_appointments():
+    """Main sync function - callable by scheduler or manual trigger"""
     # 1. Login to health portal
     session = login_to_portal(
         url=health_portal_config["portal_url"],
         username=health_portal_config["username"],
-        password=decrypt(health_portal_config["password"])
+        password=health_portal_config["password"]
     )
 
     # 2. Fetch upcoming appointments
@@ -528,9 +694,13 @@ def sync_health_portal_appointments():
         created_event = create_calendar_event(event)
         log_to_sheets(created_event, appointment)
 
-    # 5. Send summary notification
-    if new_appointments:
-        send_telegram_notification(new_appointments)
+    # 5. Return results
+    return {
+        "synced_at": datetime.now().isoformat(),
+        "new_appointments": len(new_appointments),
+        "total_appointments": len(existing_events) + len(new_appointments),
+        "appointments": new_appointments
+    }
 ```
 
 #### Appointment Description Format
@@ -641,16 +811,22 @@ OpenClaw:
 
 Portal: MyChart
 URL: https://mychart.example.com
-Status: ✅ Connected
-Last sync: 15 minutes ago
-Next sync: 45 minutes
+Status: ✅ Connected (configured via Railway env vars)
+Last sync: Today at 4:00 AM EST
+Next sync: Tomorrow at 4:00 AM EST (09:00 UTC)
 
 Appointments synced: 14
 New this week: 2
 Family members notified: Yes
 
-Credentials: ✅ Secure (encrypted)
-Auto-sync: ✅ Active (hourly)"
+Configuration:
+• Credentials: ✅ Loaded from environment variables
+• Auto-sync: ✅ Active (daily at 09:00 UTC)
+• Manual sync: ✅ Available (type 'sync now')
+
+To trigger manual sync:
+• Telegram: Type 'sync now'
+• API: POST /api/sync-portal"
 ```
 
 #### Supported Health Portal Systems
@@ -831,19 +1007,36 @@ def medicine_adherence():
 
 ### Health Portal Integration
 
-#### Portal Authentication
+#### Railway Environment Variables Configuration
+
+Set these variables in Railway dashboard for automatic health portal sync:
+
 ```javascript
-// Encrypted credential storage
+// Load from Railway environment variables at startup
 const healthPortalConfig = {
-  portalUrl: "https://mychart.example.com",
-  portalType: "MyChart",  // Epic, Cerner, Athena, etc.
-  username: "patient@email.com",
-  password: "encrypted:AES256-GCM:base64data",
-  familyAttendees: ["spouse@email.com", "daughter@email.com"],
-  syncFrequency: "hourly",
+  // Required - from Railway env vars
+  portalUrl: process.env.HEALTH_PORTAL_URL,
+  portalType: process.env.HEALTH_PORTAL_TYPE || "MyChart",
+  username: process.env.HEALTH_PORTAL_USERNAME,
+  password: process.env.HEALTH_PORTAL_PASSWORD,
+
+  // Optional - from Railway env vars
+  familyAttendees: (process.env.HEALTH_PORTAL_FAMILY_ATTENDEES || "").split(","),
+  syncTime: process.env.HEALTH_PORTAL_SYNC_TIME || "09:00",  // 9 AM UTC = 4 AM EST
+  enabled: (process.env.HEALTH_PORTAL_ENABLED || "true").toLowerCase() === "true",
   autoInviteFamily: true,
   reminderMinutes: [1440, 60, 30]  // 1 day, 1 hour, 30 min
 };
+
+// Validate required fields
+if (!healthPortalConfig.portalUrl ||
+    !healthPortalConfig.username ||
+    !healthPortalConfig.password) {
+  console.log("[health-portal] ⚠️  Required credentials not configured in Railway env vars");
+  healthPortalConfig.enabled = false;
+} else {
+  console.log("[health-portal] ✅ Configuration loaded from environment variables");
+}
 ```
 
 #### Portal Scraping/API Configuration
@@ -896,37 +1089,25 @@ const portalAppointment = {
 };
 ```
 
-#### Encryption Requirements
-```javascript
-// Password encryption using AES-256-GCM
-const crypto = require('crypto');
-
-function encryptPassword(password, key) {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  let encrypted = cipher.update(password, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  const authTag = cipher.getAuthTag();
-  return {
-    encrypted: encrypted,
-    iv: iv.toString('hex'),
-    authTag: authTag.toString('hex'),
-    algorithm: 'aes-256-gcm'
-  };
-}
-```
-
 #### Sync Schedule Configuration
 ```javascript
-// Cron job for hourly sync
+// Cron job for daily sync at configured time (UTC)
 const syncSchedule = {
   enabled: true,
-  frequency: "0 * * * *",  // Every hour
-  timezone: "America/New_York",
+  frequency: "0 9 * * *",  // Daily at 9:00 AM UTC (4:00 AM EST)
+  timezone: "UTC",
+  manualSyncAvailable: true,
   retryAttempts: 3,
   retryDelay: 5000,  // 5 seconds
   timeout: 30000  // 30 seconds
 };
+
+// Manual sync via API endpoint
+app.post('/api/sync-portal', (req, res) => {
+  sync_health_portal_appointments()
+    .then(result => res.json(result))
+    .catch(error => res.status(500).json({error: error.message}));
+});
 ```
 
 ### OAuth Scopes
