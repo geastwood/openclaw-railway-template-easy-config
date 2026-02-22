@@ -1053,13 +1053,31 @@ app.get("/setup/api/debug", requireSetupAuth, async (_req, res) => {
     OPENCLAW_NODE,
     clawArgs(["channels", "add", "--help"]),
   );
+
+  // Read OpenClaw config to show actual values
+  let openclawConfig = null;
+  try {
+    const configContent = fs.readFileSync(configPath(), "utf8");
+    openclawConfig = JSON.parse(configContent);
+
+    // Mask sensitive values for security
+    if (openclawConfig?.gateway?.auth?.token) {
+      openclawConfig.gateway.auth.token = "***MASKED***";
+    }
+  } catch (err) {
+    openclawConfig = { error: String(err) };
+  }
+
   res.json({
     wrapper: {
       node: process.version,
       port: PORT,
+      internalGatewayPort: INTERNAL_GATEWAY_PORT,
       stateDir: STATE_DIR,
       workspaceDir: WORKSPACE_DIR,
       configPath: configPath(),
+      publicUrl: PUBLIC_URL || "(auto-detect)",
+      gatewayToken: OPENCLAW_GATEWAY_TOKEN ? `${OPENCLAW_GATEWAY_TOKEN.slice(0, 8)}... (len: ${OPENCLAW_GATEWAY_TOKEN.length})` : null,
       gatewayTokenFromEnv: Boolean(process.env.OPENCLAW_GATEWAY_TOKEN?.trim()),
       gatewayTokenPersisted: fs.existsSync(
         path.join(STATE_DIR, "gateway.token"),
@@ -1071,6 +1089,7 @@ app.get("/setup/api/debug", requireSetupAuth, async (_req, res) => {
       node: OPENCLAW_NODE,
       version: v.output.trim(),
       channelsAddHelpIncludesTelegram: help.output.includes("telegram"),
+      config: openclawConfig,
     },
   });
 });
