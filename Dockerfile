@@ -115,7 +115,8 @@ RUN apt-get update \
 COPY skills /tmp/skills
 
 # Install patient-health-portal-helper skill dependencies
-WORKDIR /tmp/skills/patient-health-portal-helper
+# Note: package.json is in the lib/ subdirectory (ES modules structure)
+WORKDIR /tmp/skills/patient-health-portal-helper/lib
 RUN npm install && npm cache clean --force
 
 # Return to app directory
