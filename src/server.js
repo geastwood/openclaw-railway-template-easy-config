@@ -41,6 +41,12 @@ const INTERNAL_GATEWAY_PORT = 18789;
 const INTERNAL_GATEWAY_HOST = "127.0.0.1";
 const GATEWAY_TARGET = `http://${INTERNAL_GATEWAY_HOST}:${INTERNAL_GATEWAY_PORT}`;
 
+// Public URL for OpenClaw allowedOrigins configuration
+// Users can set PUBLIC_URL environment variable (e.g., https://my-app.up.railway.app)
+// If not set, we'll auto-detect from the first request's Host header
+let PUBLIC_URL = process.env.PUBLIC_URL?.trim()?.replace(/\/$/, ""); // Remove trailing slash
+console.log(`[wrapper] PUBLIC_URL: ${PUBLIC_URL || "(auto-detect from first request)"}`);
+
 // Always run the built-from-source CLI entry directly to avoid PATH/global-install mismatches.
 const OPENCLAW_ENTRY = "/openclaw/dist/entry.js";
 const OPENCLAW_NODE = "node";
@@ -61,6 +67,55 @@ function isConfigured() {
     return fs.existsSync(configPath());
   } catch {
     return false;
+  }
+}
+
+// Detect public URL from request headers (for auto-configuring allowedOrigins)
+let publicUrlDetected = false;
+function detectPublicUrl(req) {
+  if (publicUrlDetected || PUBLIC_URL) {
+    return; // Already set or already detected
+  }
+
+  const host = req.headers["x-forwarded-host"] || req.headers["host"];
+  const proto = req.headers["x-forwarded-proto"] || "http";
+
+  if (host && !host.includes("localhost") && !host.includes("127.0.0.1")) {
+    PUBLIC_URL = `${proto}://${host}`;
+    publicUrlDetected = true;
+    console.log(`[wrapper] Auto-detected PUBLIC_URL: ${PUBLIC_URL}`);
+
+    // Update allowedOrigins in config if gateway is running
+    if (isConfigured()) {
+      updateAllowedOrigins(PUBLIC_URL).catch((err) => {
+        console.error(`[wrapper] Failed to update allowedOrigins: ${err}`);
+      });
+    }
+  }
+}
+
+// Update gateway.controlUi.allowedOrigins in OpenClaw config
+async function updateAllowedOrigins(origin) {
+  const origins = [`http://localhost:${INTERNAL_GATEWAY_PORT}`, origin];
+  console.log(`[wrapper] Updating allowedOrigins: ${origins.join(", ")}`);
+
+  await runCmd(
+    OPENCLAW_NODE,
+    clawArgs([
+      "config",
+      "set",
+      "--json",
+      "gateway.controlUi.allowedOrigins",
+      JSON.stringify(origins),
+    ]),
+  );
+
+  // Restart gateway to apply the new allowedOrigins
+  if (gatewayProc) {
+    console.log("[wrapper] Restarting gateway to apply allowedOrigins...");
+    gatewayProc.kill("SIGTERM");
+    gatewayProc = null;
+    await ensureGatewayRunning();
   }
 }
 
@@ -752,6 +807,29 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         clawArgs(["config", "set", "gateway.controlUi.allowInsecureAuth", "true"]),
       );
 
+      // Configure allowedOrigins for WebSocket connections
+      // This allows the Railway public domain to connect without "origin not allowed" errors
+      const allowedOrigins = [`http://localhost:${INTERNAL_GATEWAY_PORT}`];
+      if (PUBLIC_URL) {
+        allowedOrigins.push(PUBLIC_URL);
+        console.log(`[onboard] Configuring allowedOrigins: ${allowedOrigins.join(", ")}`);
+      } else {
+        console.log(`[onboard] PUBLIC_URL not set, allowedOrigins will be auto-detected from first request`);
+        // Add placeholder that will be replaced when we detect the real URL
+        allowedOrigins.push("https://*.up.railway.app"); // Wildcard for Railway domains
+      }
+
+      await runCmd(
+        OPENCLAW_NODE,
+        clawArgs([
+          "config",
+          "set",
+          "--json",
+          "gateway.controlUi.allowedOrigins",
+          JSON.stringify(allowedOrigins),
+        ]),
+      );
+
       const channelsHelp = await runCmd(
         OPENCLAW_NODE,
         clawArgs(["channels", "add", "--help"]),
@@ -1047,38 +1125,14 @@ proxy.on("proxyReqWs", (proxyReq, req, socket, options, head) => {
   proxyReq.setHeader("Authorization", `Bearer ${OPENCLAW_GATEWAY_TOKEN}`);
 });
 
-// Middleware to strip Railway proxy headers BEFORE they reach the proxy
-// This prevents OpenClaw gateway from detecting "untrusted proxy" and requiring device pairing
-function stripProxyHeaders(req, res, next) {
-  // Remove all proxy-related headers that Railway might add
-  delete req.headers["x-forwarded-for"];
-  delete req.headers["x-forwarded-host"];
-  delete req.headers["x-forwarded-proto"];
-  delete req.headers["x-real-ip"];
-  delete req.headers["forwarded"];
-  delete req.headers["x-railway"]; // Railway-specific header
-  delete req.headers["x-railway-request-id"];
-  delete req.headers["x-vercel-id"]; // If proxied through Vercel
-  delete req.headers["x-vercel-ip-country"];
-  delete req.headers["cf-connecting-ip"]; // Cloudflare
-  delete req.headers["cf-ray"];
-  delete req.headers["cf-ipcountry"];
-
-  // Override Host header to appear local
-  // OpenClaw treats loopback connections with non-local Host headers as remote
-  // This causes "pairing required" errors even when allowInsecureAuth is true
-  req.headers["host"] = `localhost:${INTERNAL_GATEWAY_PORT}`;
-
-  // Override Origin header to appear local for WebSocket connections
-  // OpenClaw validates the Origin header and rejects non-local origins
-  // This causes "origin not allowed" errors
-  if (req.headers["origin"]) {
-    req.headers["origin"] = `http://localhost:${INTERNAL_GATEWAY_PORT}`;
-  }
+// Auto-detect PUBLIC_URL from first request and handle all routes
+app.use(async (req, res, next) => {
+  // Auto-detect PUBLIC_URL from first request if not already set
+  detectPublicUrl(req);
   next();
-}
+});
 
-app.use(stripProxyHeaders, async (req, res) => {
+app.use(async (req, res) => {
   // If not configured, force users to /setup for any non-setup routes.
   if (!isConfigured() && !req.path.startsWith("/setup")) {
     return res.redirect("/setup");
@@ -1119,30 +1173,8 @@ server.on("upgrade", async (req, socket, head) => {
     return;
   }
 
-  // Strip Railway proxy headers from WebSocket upgrade requests
-  // This prevents "pairing required" and "origin not allowed" errors
-  delete req.headers["x-forwarded-for"];
-  delete req.headers["x-forwarded-host"];
-  delete req.headers["x-forwarded-proto"];
-  delete req.headers["x-real-ip"];
-  delete req.headers["forwarded"];
-  delete req.headers["x-railway"];
-  delete req.headers["x-railway-request-id"];
-  delete req.headers["x-vercel-id"];
-  delete req.headers["x-vercel-ip-country"];
-  delete req.headers["cf-connecting-ip"];
-  delete req.headers["cf-ray"];
-  delete req.headers["cf-ipcountry"];
-
-  // Override Host header to appear local
-  // OpenClaw treats loopback connections with non-local Host headers as remote
-  req.headers["host"] = `localhost:${INTERNAL_GATEWAY_PORT}`;
-
-  // Override Origin header to appear local
-  // OpenClaw validates the Origin header and rejects non-local origins
-  if (req.headers["origin"]) {
-    req.headers["origin"] = `http://localhost:${INTERNAL_GATEWAY_PORT}`;
-  }
+  // Auto-detect PUBLIC_URL from WebSocket upgrade requests
+  detectPublicUrl(req);
 
   // Proxy WebSocket upgrade (auth token injected via proxyReqWs event)
   proxy.ws(req, socket, head, { target: GATEWAY_TARGET });
