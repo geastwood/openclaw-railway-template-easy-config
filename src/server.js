@@ -148,35 +148,6 @@ async function startGateway() {
 
   console.log(`[gateway] ========== TOKEN SYNC COMPLETE ==========`);
 
-  // Ensure trusted proxies is configured for Railway
-  console.log(`[gateway] Configuring trustedProxies for Railway...`);
-  const trustedProxiesResult = await runCmd(
-    OPENCLAW_NODE,
-    clawArgs(["config", "set", "gateway.trustedProxies", "linklocal"]),
-  );
-  if (trustedProxiesResult.code !== 0) {
-    console.warn(`[gateway] Warning: Failed to set trustedProxies (exit ${trustedProxiesResult.code})`);
-  } else {
-    console.log(`[gateway] ✓ trustedProxies set to linklocal`);
-  }
-
-  // Set gateway host to Railway public URL if available
-  const gatewayHost = process.env.GATEWAY_HOST || process.env.RAILWAY_PUBLIC_DOMAIN;
-  if (gatewayHost) {
-    console.log(`[gateway] Setting gateway.host to: ${gatewayHost}`);
-    const hostResult = await runCmd(
-      OPENCLAW_NODE,
-      clawArgs(["config", "set", "gateway.host", gatewayHost]),
-    );
-    if (hostResult.code !== 0) {
-      console.warn(`[gateway] Warning: Failed to set gateway.host (exit ${hostResult.code})`);
-    } else {
-      console.log(`[gateway] ✓ gateway.host set to ${gatewayHost}`);
-    }
-  } else {
-    console.log(`[gateway] GATEWAY_HOST not set, skipping gateway.host configuration`);
-  }
-
   const args = [
     "gateway",
     "run",
@@ -188,7 +159,14 @@ async function startGateway() {
     "token",
     "--token",
     OPENCLAW_GATEWAY_TOKEN,
+    "--trust-proxy",
   ];
+
+  // Set gateway host environment variable for Railway
+  const gatewayHost = process.env.GATEWAY_HOST || process.env.RAILWAY_PUBLIC_DOMAIN;
+  if (gatewayHost) {
+    console.log(`[gateway] Setting GATEWAY_HOST environment variable to: ${gatewayHost}`);
+  }
 
   // Read the .env file to get the API key for the gateway process
   let gatewayEnv = {
@@ -196,6 +174,11 @@ async function startGateway() {
     OPENCLAW_STATE_DIR: STATE_DIR,
     OPENCLAW_WORKSPACE_DIR: WORKSPACE_DIR,
   };
+
+  // Set GATEWAY_HOST environment variable for Railway if available
+  if (gatewayHost) {
+    gatewayEnv.GATEWAY_HOST = gatewayHost;
+  }
 
   try {
     const envPath = path.join(STATE_DIR, ".env");
@@ -780,19 +763,7 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         OPENCLAW_NODE,
         clawArgs(["config", "set", "gateway.controlUi.allowInsecureAuth", "true"]),
       );
-      // Trust Railway's proxy headers so connections are treated as local
-      await runCmd(
-        OPENCLAW_NODE,
-        clawArgs(["config", "set", "gateway.trustedProxies", "linklocal"]),
-      );
-      // Set gateway host to Railway public URL if available
-      const gatewayHost = process.env.GATEWAY_HOST || process.env.RAILWAY_PUBLIC_DOMAIN;
-      if (gatewayHost) {
-        await runCmd(
-          OPENCLAW_NODE,
-          clawArgs(["config", "set", "gateway.host", gatewayHost]),
-        );
-      }
+      // Note: --trust-proxy flag is added to gateway run command instead of config set
 
       const channelsHelp = await runCmd(
         OPENCLAW_NODE,
