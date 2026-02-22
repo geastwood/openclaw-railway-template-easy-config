@@ -1175,6 +1175,25 @@ proxy.on("proxyReqWs", (proxyReq, req, socket, options, head) => {
   proxyReq.setHeader("Authorization", `Bearer ${OPENCLAW_GATEWAY_TOKEN}`);
 });
 
+// Strip Railway's proxy headers before requests reach the gateway
+// Railway adds X-Forwarded-* headers that contain the real client IP
+// Even with trustedProxies=["127.0.0.1"], OpenClaw validates IPs in X-Forwarded-For
+// By stripping these headers, the gateway sees only the wrapper (127.0.0.1) as the client
+function stripRailwayProxyHeaders(req, res, next) {
+  // Remove proxy headers that Railway's edge network adds
+  delete req.headers["x-forwarded-for"];
+  delete req.headers["x-forwarded-host"];
+  delete req.headers["x-forwarded-proto"];
+  delete req.headers["x-real-ip"];
+  delete req.headers["forwarded"];
+  delete req.headers["x-railway"];
+  delete req.headers["x-railway-request-id"];
+  delete req.headers["x-railway-edge"];
+  // Note: We DON'T modify Host or Origin headers - those are handled by
+  // allowedOrigins configuration in OpenClaw
+  next();
+}
+
 // Auto-detect PUBLIC_URL from first request and handle all routes
 app.use(async (req, res, next) => {
   // Auto-detect PUBLIC_URL from first request if not already set
@@ -1182,7 +1201,8 @@ app.use(async (req, res, next) => {
   next();
 });
 
-app.use(async (req, res) => {
+// Apply proxy header stripping before handling requests
+app.use(stripRailwayProxyHeaders, async (req, res) => {
   // If not configured, force users to /setup for any non-setup routes.
   if (!isConfigured() && !req.path.startsWith("/setup")) {
     return res.redirect("/setup");
@@ -1225,6 +1245,9 @@ server.on("upgrade", async (req, socket, head) => {
 
   // Auto-detect PUBLIC_URL from WebSocket upgrade requests
   detectPublicUrl(req);
+
+  // Strip Railway proxy headers from WebSocket upgrade requests
+  stripRailwayProxyHeaders(req, null, () => {});
 
   // Proxy WebSocket upgrade (auth token injected via proxyReqWs event)
   proxy.ws(req, socket, head, { target: GATEWAY_TARGET });
