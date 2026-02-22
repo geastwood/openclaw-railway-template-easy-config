@@ -119,7 +119,48 @@ await runCmd(OPENCLAW_NODE, clawArgs([
 - Auto-detection only works after first request
 - Wildcard fallback less secure
 
-### v1.1.1: RAILWAY_PUBLIC_DOMAIN (Current) ✅
+### v1.1.3: Strip Railway Proxy Headers (Current) ✅
+
+**Tag:** `v1.1.3-strip-proxy-headers`
+
+**Approach:** Strip Railway's `X-Forwarded-*` headers at Express level, combined with `allowedOrigins` and `trustedProxies`.
+
+**Why This Was Needed:**
+
+Even with `trustedProxies=["127.0.0.1"]`, OpenClaw validates that the IPs in the `X-Forwarded-For` header are also trusted. Railway adds:
+
+```
+X-Forwarded-For: 99.229.22.196, 157.52.64.23
+```
+
+The gateway sees:
+- Connection from: `127.0.0.1` (wrapper) ✓ trusted
+- But `X-Forwarded-For` contains: `99.229.22.196` ✗ NOT trusted
+
+**Solution:** Strip Railway's proxy headers before requests reach the gateway:
+
+```javascript
+function stripRailwayProxyHeaders(req, res, next) {
+  delete req.headers["x-forwarded-for"];
+  delete req.headers["x-forwarded-host"];
+  delete req.headers["x-forwarded-proto"];
+  delete req.headers["x-real-ip"];
+  delete req.headers["forwarded"];
+  delete req.headers["x-railway"];
+  // Don't modify Host/Origin - handled by allowedOrigins
+  next();
+}
+```
+
+**Pros:**
+- ✅ All connections appear to come from 127.0.0.1
+- ✅ Matches trustedProxies configuration
+- ✅ Works with allowedOrigins for origin validation
+- ✅ No Host/Origin header manipulation (security best practice)
+
+**Cons:**
+- Header manipulation (but only proxy headers, not Host/Origin)
+- Slightly more complex middleware
 
 **Tag:** `v1.1.1-railway-public-domain`
 
@@ -152,7 +193,23 @@ function getPublicUrl() {
 
 ---
 
-## Current Implementation
+## Current Implementation (v1.1.3)
+
+The final solution combines **three complementary approaches**:
+
+1. **allowedOrigins** - Allows Railway public domain for WebSocket connections
+2. **trustedProxies** - Trusts 127.0.0.1 (the wrapper) as a proxy
+3. **Header Stripping** - Removes Railway's proxy headers so gateway sees only 127.0.0.1
+
+### Why All Three Are Needed
+
+| Component | Purpose | What Happens Without It |
+|-----------|---------|-------------------------|
+| `allowedOrigins` | Validate WebSocket origin | "Origin not allowed" (code 1008) |
+| `trustedProxies` | Trust 127.0.0.1 as proxy | "Proxy headers detected from untrusted address" |
+| `Strip Headers` | Remove X-Forwarded-* | Real client IP in X-Forwarded-For isn't trusted |
+
+## Current Implementation (v1.1.2 - superseded by v1.1.3)
 
 ### Architecture
 
@@ -263,9 +320,11 @@ No configuration needed - the template auto-detects `localhost` URLs.
 
 | Tag | Approach | Use Case |
 |-----|----------|----------|
-| `v1.1.1-railway-public-domain` | ✅ **Current** - Uses `RAILWAY_PUBLIC_DOMAIN` | Production, recommended |
+| `v1.1.3-strip-proxy-headers` | ✅ **Current** - Strip Railway proxy headers + allowedOrigins + trustedProxies | Production, recommended |
+| `v1.1.2-trusted-proxies` | Incomplete - Only allowedOrigins + trustedProxies (missing header stripping) | Don't use |
+| `v1.1.1-railway-public-domain` | Incomplete - Only allowedOrigins (missing trustedProxies + header stripping) | Don't use |
 | `v1.1.0-allowed-origins` | Legacy - Manual `PUBLIC_URL` or auto-detect | If Railway env var changes |
-| `v1.0.0-railway-fix` | Legacy - Header rewriting | Last resort fallback |
+| `v1.0.0-railway-fix` | Legacy - Full header rewriting | Last resort fallback |
 
 ### Rollback Commands
 
@@ -287,6 +346,47 @@ git checkout v1.0.0-railway-fix
 ### OpenClaw Configuration
 
 The template sets these OpenClaw configuration options:
+
+```json
+{
+  "gateway": {
+    "bind": "loopback",
+    "port": 18789,
+    "auth": {
+      "mode": "token",
+      "token": "<SETUP_PASSWORD>"
+    },
+    "controlUi": {
+      "allowInsecureAuth": true,
+      "allowedOrigins": [
+        "http://localhost:18789",
+        "https://<RAILWAY_PUBLIC_DOMAIN>"
+      ]
+    },
+    "trustedProxies": ["127.0.0.1", "::1"]
+  }
+}
+```
+
+### Header Stripping Middleware
+
+The Express wrapper strips Railway's proxy headers before requests reach the gateway:
+
+```javascript
+function stripRailwayProxyHeaders(req, res, next) {
+  delete req.headers["x-forwarded-for"];
+  delete req.headers["x-forwarded-host"];
+  delete req.headers["x-forwarded-proto"];
+  delete req.headers["x-real-ip"];
+  delete req.headers["forwarded"];
+  delete req.headers["x-railway"];
+  delete req.headers["x-railway-request-id"];
+  delete req.headers["x-railway-edge"];
+  next();
+}
+```
+
+**Important:** We DON'T modify `Host` or `Origin` headers - those are properly handled by OpenClaw's `allowedOrigins` configuration. Only the proxy detection headers are stripped.
 
 ```json
 {
@@ -406,6 +506,8 @@ The origin isn't in `allowedOrigins`. Check:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| v1.1.3 | 2025-02-22 | Strip Railway proxy headers (X-Forwarded-*) to work with trustedProxies |
+| v1.1.2 | 2025-02-22 | Configure gateway.trustedProxies to trust wrapper |
 | v1.1.1 | 2025-02-22 | Use `RAILWAY_PUBLIC_DOMAIN` for zero-config setup |
 | v1.1.0 | 2025-02-22 | Implement `allowedOrigins` configuration |
 | v1.0.0 | 2025-02-21 | Initial header rewriting approach |
