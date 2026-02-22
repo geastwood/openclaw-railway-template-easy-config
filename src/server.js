@@ -1030,7 +1030,7 @@ app.get("/setup/export", requireSetupAuth, async (_req, res) => {
 const proxy = httpProxy.createProxyServer({
   target: GATEWAY_TARGET,
   ws: true,
-  xfwd: true,
+  xfwd: false, // Don't add X-Forwarded-* headers (causes "untrusted proxy" errors)
 });
 
 proxy.on("error", (err, _req, _res) => {
