@@ -397,9 +397,17 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
       ],
       models: [
         {
-          id: "minimaxai/minimax-m2.5",
-          name: "MiniMax M2.5 (default)",
-          description: "Lightweight model optimized for coding and reasoning",
+          id: "moonshotai/kimi-k2.5",
+          name: "Moonshot Kimi K2.5 (default)",
+          description: "Flagship model with advanced reasoning and long context",
+          contextWindow: 327680,
+          inputPrice: 0.55,
+          outputPrice: 2.00,
+        },
+        {
+          id: "minimaxai/minimax-m2.1",
+          name: "MiniMax M2.1",
+          description: "Lightweight 10B model, optimized for coding",
           contextWindow: 196600,
           inputPrice: 0.30,
           outputPrice: 1.20,
@@ -866,7 +874,7 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
       // Configure Atlas Cloud if selected (using OpenAI-compatible endpoint)
       console.log(`[atlas] Checking authChoice: "${payload.authChoice}"`);
       if (payload.authChoice === "atlas-api-key") {
-        const atlasModel = payload.atlasModel || "minimaxai/minimax-m2.5";
+        const atlasModel = payload.atlasModel || "moonshotai/kimi-k2.5";
         console.log(`[atlas] Configuring Atlas Cloud provider with model: ${atlasModel}`);
 
         // Set models.mode to merge (doesn't clobber existing providers)
@@ -881,11 +889,7 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
           apiKey: "${OPENAI_API_KEY}",
           api: "openai-completions",
           models: [
-            { id: "minimaxai/minimax-m2.5", name: "MiniMax M2.5" },
-            { id: "qwen/qwen-3.5-397ba17b", name: "Qwen3.5 397BA17B" },
-            { id: "zai-org/glm-5", name: "GLM 5" },
-            { id: "moonshot-ai/kimi-k2.5", name: "Kimi K2.5" },
-            { id: "qwen/qwen-3-max-20260123", name: "Qwen3 Max 20260123" },
+            { id: "moonshotai/kimi-k2.5", name: "Moonshot Kimi K2.5" },
             { id: "minimaxai/minimax-m2.1", name: "MiniMax M2.1" },
             { id: "zai-org/glm-4.7", name: "GLM 4.7" },
             { id: "deepseek-ai/deepseek-v3.2", name: "DeepSeek V3.2" },
