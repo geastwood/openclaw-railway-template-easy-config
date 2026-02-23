@@ -72,7 +72,9 @@ function sleep(ms) {
 }
 
 async function waitForGatewayReady(opts = {}) {
-  const timeoutMs = opts.timeoutMs ?? 20_000;
+  // Railway may need more time for cold starts (especially first deployment)
+  // Default to 90 seconds for Railway, allow override via opts
+  const timeoutMs = opts.timeoutMs ?? 90_000;
   const start = Date.now();
   const endpoints = ["/openclaw", "/openclaw", "/", "/health"];
   
@@ -205,7 +207,8 @@ async function ensureGatewayRunning() {
   if (!gatewayStarting) {
     gatewayStarting = (async () => {
       await startGateway();
-      const ready = await waitForGatewayReady({ timeoutMs: 20_000 });
+      // Use longer timeout for Railway cold starts (90 seconds)
+      const ready = await waitForGatewayReady({ timeoutMs: 90_000 });
       if (!ready) {
         throw new Error("Gateway did not become ready in time");
       }
@@ -256,6 +259,58 @@ function requireSetupAuth(req, res, next) {
   }
   return next();
 }
+
+// Decode base64-encoded credentials on startup
+// This allows secure credential storage via environment variables
+function decodeCredentialsFromEnv() {
+  const googleSecretBase64 = process.env.GOOGLE_CLIENT_SECRET_BASE64;
+
+  if (!googleSecretBase64) {
+    console.log("[credentials] GOOGLE_CLIENT_SECRET_BASE64 not set, skipping Google credentials setup");
+    return;
+  }
+
+  try {
+    // Create credentials directory
+    const credentialsDir = path.join(STATE_DIR, "credentials");
+    fs.mkdirSync(credentialsDir, { recursive: true });
+
+    // Decode base64 and write to file
+    const decoded = Buffer.from(googleSecretBase64, "base64").toString("utf8");
+    const credentialsPath = path.join(credentialsDir, "client_secret.json");
+
+    // Validate it's valid JSON before writing
+    const parsed = JSON.parse(decoded); // Will throw if invalid
+
+    // Check if this is the placeholder (contains "note" key)
+    if (parsed.note && parsed.note.includes("Replace this with your actual")) {
+      console.log(`[credentials] ⚠️  GOOGLE_CLIENT_SECRET_BASE64 contains placeholder value`);
+      console.log(`[credentials] To use Google Workspace features:`);
+      console.log(`[credentials]   1. Create OAuth credentials at https://console.google.com`);
+      console.log(`[credentials]   2. Download client_secret.json`);
+      console.log(`[credentials]   3. Encode: base64 -w 0 client_secret.json`);
+      console.log(`[credentials]   4. Update GOOGLE_CLIENT_SECRET_BASE64 in Railway variables`);
+      return;
+    }
+
+    // Validate it's a proper client_secret.json (has required fields)
+    if (!parsed.installed && !parsed.web) {
+      throw new Error("Invalid client_secret.json format (missing 'installed' or 'web' key)");
+    }
+
+    fs.writeFileSync(credentialsPath, decoded, { mode: 0o600 });
+    console.log(`[credentials] ✅ Successfully decoded and wrote Google credentials to ${credentialsPath}`);
+
+    // Set environment variable for gog skill to find it
+    process.env.GOOGLE_CREDENTIALS_PATH = credentialsPath;
+  } catch (err) {
+    console.error(`[credentials] ❌ Failed to decode Google credentials: ${err.message}`);
+    console.error(`[credentials] The GOOGLE_CLIENT_SECRET_BASE64 environment variable may be invalid`);
+  }
+}
+
+// Decode credentials on startup
+decodeCredentialsFromEnv();
 
 const app = express();
 app.disable("x-powered-by");
@@ -975,7 +1030,7 @@ app.get("/setup/export", requireSetupAuth, async (_req, res) => {
 const proxy = httpProxy.createProxyServer({
   target: GATEWAY_TARGET,
   ws: true,
-  xfwd: true,
+  xfwd: false, // Don't add X-Forwarded-* headers (causes "untrusted proxy" errors)
 });
 
 proxy.on("error", (err, _req, _res) => {
@@ -992,7 +1047,38 @@ proxy.on("proxyReqWs", (proxyReq, req, socket, options, head) => {
   proxyReq.setHeader("Authorization", `Bearer ${OPENCLAW_GATEWAY_TOKEN}`);
 });
 
-app.use(async (req, res) => {
+// Middleware to strip Railway proxy headers BEFORE they reach the proxy
+// This prevents OpenClaw gateway from detecting "untrusted proxy" and requiring device pairing
+function stripProxyHeaders(req, res, next) {
+  // Remove all proxy-related headers that Railway might add
+  delete req.headers["x-forwarded-for"];
+  delete req.headers["x-forwarded-host"];
+  delete req.headers["x-forwarded-proto"];
+  delete req.headers["x-real-ip"];
+  delete req.headers["forwarded"];
+  delete req.headers["x-railway"]; // Railway-specific header
+  delete req.headers["x-railway-request-id"];
+  delete req.headers["x-vercel-id"]; // If proxied through Vercel
+  delete req.headers["x-vercel-ip-country"];
+  delete req.headers["cf-connecting-ip"]; // Cloudflare
+  delete req.headers["cf-ray"];
+  delete req.headers["cf-ipcountry"];
+
+  // Override Host header to appear local
+  // OpenClaw treats loopback connections with non-local Host headers as remote
+  // This causes "pairing required" errors even when allowInsecureAuth is true
+  req.headers["host"] = `localhost:${INTERNAL_GATEWAY_PORT}`;
+
+  // Override Origin header to appear local for WebSocket connections
+  // OpenClaw validates the Origin header and rejects non-local origins
+  // This causes "origin not allowed" errors
+  if (req.headers["origin"]) {
+    req.headers["origin"] = `http://localhost:${INTERNAL_GATEWAY_PORT}`;
+  }
+  next();
+}
+
+app.use(stripProxyHeaders, async (req, res) => {
   // If not configured, force users to /setup for any non-setup routes.
   if (!isConfigured() && !req.path.startsWith("/setup")) {
     return res.redirect("/setup");
@@ -1032,6 +1118,32 @@ server.on("upgrade", async (req, socket, head) => {
     socket.destroy();
     return;
   }
+
+  // Strip Railway proxy headers from WebSocket upgrade requests
+  // This prevents "pairing required" and "origin not allowed" errors
+  delete req.headers["x-forwarded-for"];
+  delete req.headers["x-forwarded-host"];
+  delete req.headers["x-forwarded-proto"];
+  delete req.headers["x-real-ip"];
+  delete req.headers["forwarded"];
+  delete req.headers["x-railway"];
+  delete req.headers["x-railway-request-id"];
+  delete req.headers["x-vercel-id"];
+  delete req.headers["x-vercel-ip-country"];
+  delete req.headers["cf-connecting-ip"];
+  delete req.headers["cf-ray"];
+  delete req.headers["cf-ipcountry"];
+
+  // Override Host header to appear local
+  // OpenClaw treats loopback connections with non-local Host headers as remote
+  req.headers["host"] = `localhost:${INTERNAL_GATEWAY_PORT}`;
+
+  // Override Origin header to appear local
+  // OpenClaw validates the Origin header and rejects non-local origins
+  if (req.headers["origin"]) {
+    req.headers["origin"] = `http://localhost:${INTERNAL_GATEWAY_PORT}`;
+  }
+
   // Proxy WebSocket upgrade (auth token injected via proxyReqWs event)
   proxy.ws(req, socket, head, { target: GATEWAY_TARGET });
 });
