@@ -119,34 +119,69 @@ await runCmd(OPENCLAW_NODE, clawArgs([
 - Auto-detection only works after first request
 - Wildcard fallback less secure
 
-### v1.1.7: Delete X-Forwarded-For + Override Both Host and Origin (Current) ✅
+### v1.1.9: Revert to v1.0.0 Approach - Full Header Stripping (Current) ✅
+
+**Tag:** `v1.1.9-revert-to-v1.0.0-approach`
+
+**Approach:** After trying 8 different approaches (v1.1.1 through v1.1.8), we reverted to the original v1.0.0 approach which:
+
+1. **DELETES ALL proxy headers** (X-Forwarded-*, X-Real-IP, Forwarded, x-railway-*, etc.)
+2. **Handles Origin conditionally** (`if (req.headers["origin"])`) - only overrides if present
+3. **Does NOT configure `allowedOrigins` or `trustedProxies`** - relies entirely on header manipulation
+4. **Deletes additional headers** (x-vercel-*, cf-*) for other platforms
+
+**Why This Works:**
+
+After extensive testing, the simpler v1.0.0 approach succeeded where all more complex approaches failed. The key insight is that OpenClaw needs to see a **truly local connection** without any proxy indication whatsoever. The presence of ANY proxy header (even with valid values) or additional configuration (`allowedOrigins`, `trustedProxies`) somehow interferes with OpenClaw's local connection detection and auto-approval logic.
+
+**Solution:** Simple, aggressive header stripping:
+
+```javascript
+function stripProxyHeaders(req, res, next) {
+  // Remove ALL proxy-related headers
+  delete req.headers["x-forwarded-for"];
+  delete req.headers["x-forwarded-host"];
+  delete req.headers["x-forwarded-proto"];
+  delete req.headers["x-real-ip"];
+  delete req.headers["forwarded"];
+  delete req.headers["x-railway"];
+  delete req.headers["x-railway-request-id"];
+  delete req.headers["x-vercel-id"];
+  delete req.headers["x-vercel-ip-country"];
+  delete req.headers["cf-connecting-ip"];
+  delete req.headers["cf-ray"];
+  delete req.headers["cf-ipcountry"];
+
+  // Override Host to localhost
+  req.headers["host"] = `localhost:${INTERNAL_GATEWAY_PORT}`;
+
+  // Override Origin conditionally (only if present)
+  if (req.headers["origin"]) {
+    req.headers["origin"] = `http://localhost:${INTERNAL_GATEWAY_PORT}`;
+  }
+
+  next();
+}
+```
+
+**Pros:**
+- ✅ Works reliably - tested and confirmed
+- ✅ Simple implementation
+- ✅ No complex configuration needed
+- ✅ Device pairing auto-approved
+- ✅ No "pairing required" errors
+
+**Cons:**
+- Aggressive header manipulation
+- Doesn't use OpenClaw's built-in security features (allowedOrigins, trustedProxies)
+
+### v1.1.7: Delete X-Forwarded-For + Override Both Host and Origin (Superseded) ⚠️
 
 **Tag:** `v1.1.7-delete-x-forwarded-for`
 
-**Approach:** **DELETE** Railway's `X-Forwarded-For` header (instead of setting it to `127.0.0.1`) AND override BOTH the `Host` header AND the `Origin` header to localhost.
+**Issue:** Despite deleting X-Forwarded-For and overriding both Host and Origin headers, the gateway was STILL requiring pairing. This approach also configured `allowedOrigins` and `trustedProxies`, which may have interfered with the local connection detection.
 
-**Why This Was Needed:**
-
-Even with v1.1.6 (which set `X-Forwarded-For: 127.0.0.1` and overrode both `Host` and `Origin` headers), the gateway was STILL requiring pairing:
-
-```
-remote=127.0.0.1 fwd=127.0.0.1 origin=http://localhost:18789 host=localhost:18789
-allowInsecureAuth=true ✓
-code=1008 reason=pairing required
-```
-
-**Root Cause:** When `X-Forwarded-For` header exists (even with valid value `127.0.0.1`), OpenClaw's `resolveClientIp()` treats the connection as "proxied" rather than "direct local". The function returns `undefined` when all forwarded hops are trusted, but the presence of ANY proxy header may cause the gateway to classify the connection differently and still require pairing.
-
-**Solution:** DELETE `X-Forwarded-For` entirely (instead of setting it to `127.0.0.1`) so the connection appears as a direct local connection from the wrapper (127.0.0.1) without any proxy indication:
-
-```javascript
-function normalizeProxyHeaders(req, res, next) {
-  // DELETE X-Forwarded-For instead of setting it.
-  // When this header exists (even with valid value 127.0.0.1), OpenClaw treats
-  // the connection as "proxied" rather than "direct local", which can trigger
-  // pairing requirements. By deleting it, the connection appears direct from
-  // the wrapper (127.0.0.1) without any proxy indication.
-  delete req.headers["x-forwarded-for"];
+**Use v1.1.9 instead.**
 
   // Override Host to localhost so gateway treats this as a local connection
   req.headers["host"] = `localhost:${INTERNAL_GATEWAY_PORT}`;
@@ -242,19 +277,9 @@ The final solution combines **four complementary approaches**:
 4. **Override Host Header** - Sets Host to localhost:18789 for local connection treatment
 5. **Override Origin Header** - Sets Origin to http://localhost:18789 for local connection treatment
 
-### Why All Are Needed
+## Current Implementation (v1.1.9)
 
-| Component | Purpose | What Happens Without It |
-|-----------|---------|-------------------------|
-| `allowedOrigins` | Validate WebSocket origin | "Origin not allowed" (code 1008) - fallback only |
-| `trustedProxies` | Trust 127.0.0.1 as proxy | Fallback - not actually used when X-Forwarded-For is deleted |
-| `DELETE X-Forwarded-For` | Remove proxy indication | Connection treated as "proxied" and requires pairing |
-| `Override Host Header` | Set Host to localhost | Gateway sees Railway domain, treats as remote |
-| `Override Origin Header` | Set Origin to localhost | Gateway sees Railway domain, treats as remote, requires pairing even with allowInsecureAuth |
-
-**Key Insight:** Deleting `X-Forwarded-For` (instead of setting it to `127.0.0.1`) makes the connection appear as a direct local connection from the wrapper, which OpenClaw treats as truly local without requiring pairing.
-
-## Current Implementation (v1.1.6 - superseded by v1.1.7)
+The v1.1.9 implementation reverts to the simple, proven v1.0.0 approach. It relies **entirely on header manipulation** without configuring OpenClaw's security features (`allowedOrigins`, `trustedProxies`).
 
 ### Architecture
 
@@ -267,11 +292,103 @@ Railway Edge Network
     │
     ▼
 Express Wrapper (PORT=8080)
-    │ (uses RAILWAY_PUBLIC_DOMAIN)
-    │ (sets allowedOrigins in OpenClaw config)
+    │ (DELETES all proxy headers)
+    │ (overrides Host and Origin to localhost)
+    │ (does NOT configure allowedOrigins/trustedProxies)
     │
     ▼
 OpenClaw Gateway (localhost:18789)
+    │ (sees direct local connection from 127.0.0.1)
+    │ (auto-approves device pairing)
+    ▼
+WebSocket Connection ✅
+```
+
+### Key Components
+
+#### 1. Proxy Header Stripping Middleware
+
+**Location:** `src/server.js:1047-1082`
+
+```javascript
+function stripProxyHeaders(req, res, next) {
+  // Remove ALL proxy-related headers that Railway might add
+  delete req.headers["x-forwarded-for"];
+  delete req.headers["x-forwarded-host"];
+  delete req.headers["x-forwarded-proto"];
+  delete req.headers["x-real-ip"];
+  delete req.headers["forwarded"];
+  delete req.headers["x-railway"];
+  delete req.headers["x-railway-request-id"];
+  delete req.headers["x-vercel-id"];
+  delete req.headers["x-vercel-ip-country"];
+  delete req.headers["cf-connecting-ip"];
+  delete req.headers["cf-ray"];
+  delete req.headers["cf-ipcountry"];
+
+  // Override Host header to appear local
+  req.headers["host"] = `localhost:${INTERNAL_GATEWAY_PORT}`;
+
+  // Override Origin header to appear local (conditionally)
+  if (req.headers["origin"]) {
+    req.headers["origin"] = `http://localhost:${INTERNAL_GATEWAY_PORT}`;
+  }
+
+  next();
+}
+```
+
+#### 2. WebSocket Upgrade Handler
+
+**Location:** `src/server.js:1119-1142`
+
+```javascript
+server.on("upgrade", async (req, socket, head) => {
+  // ... gateway readiness check ...
+
+  // Strip ALL proxy headers from WebSocket upgrade requests
+  delete req.headers["x-forwarded-for"];
+  delete req.headers["x-forwarded-host"];
+  // ... (all proxy headers) ...
+
+  // Override Host and Origin headers
+  req.headers["host"] = `localhost:${INTERNAL_GATEWAY_PORT}`;
+  if (req.headers["origin"]) {
+    req.headers["origin"] = `http://localhost:${INTERNAL_GATEWAY_PORT}`;
+  }
+
+  // Proxy WebSocket upgrade (auth token injected via proxyReqWs event)
+  proxy.ws(req, socket, head, { target: GATEWAY_TARGET });
+});
+```
+
+#### 3. Auth Token Injection
+
+**Location:** `src/server.js:1042-1047`
+
+```javascript
+// Inject auth token into HTTP proxy requests
+proxy.on("proxyReq", (proxyReq, req, res) => {
+  proxyReq.setHeader("Authorization", `Bearer ${OPENCLAW_GATEWAY_TOKEN}`);
+});
+
+// Inject auth token into WebSocket upgrade requests
+proxy.on("proxyReqWs", (proxyReq, req, socket, options, head) => {
+  proxyReq.setHeader("Authorization", `Bearer ${OPENCLAW_GATEWAY_TOKEN}`);
+});
+```
+
+### Why v1.1.9 Works When v1.1.1-v1.1.8 Didn't
+
+| Version | Approach | Result |
+|---------|----------|--------|
+| v1.1.1-v1.1.6 | Set X-Forwarded-For to 127.0.0.1 + override Host/Origin | ❌ Still required pairing |
+| v1.1.7-v1.1.8 | Delete X-Forwarded-For + override Host/Origin + configure allowedOrigins/trustedProxies | ❌ Still required pairing |
+| v1.1.9 (v1.0.0) | **Delete ALL proxy headers + override Host/Origin + NO config** | ✅ Auto-approved |
+
+**Key Insight:** Configuring `allowedOrigins` and `trustedProxies` may have interfered with OpenClaw's local connection detection. The simpler approach (only header manipulation, no config) allows OpenClaw to see the connection as truly local and auto-approve device pairing.
+
+## Current Implementation (v1.1.7 - superseded by v1.1.9)
     │ (validates origin against allowedOrigins)
     │ (requires Bearer token)
     ▼
@@ -365,7 +482,8 @@ No configuration needed - the template auto-detects `localhost` URLs.
 
 | Tag | Approach | Use Case |
 |-----|----------|----------|
-| `v1.1.7-delete-x-forwarded-for` | ✅ **Current** - DELETE X-Forwarded-For + Override Host AND Origin headers + allowedOrigins + trustedProxies | Production, recommended |
+| `v1.1.9-revert-to-v1.0.0-approach` | ✅ **Current** - DELETE ALL proxy headers + Override Host/Origin + NO allowedOrigins/trustedProxies config | Production, recommended |
+| `v1.1.7-delete-x-forwarded-for` | ⚠️ Superseded - DELETE X-Forwarded-For + Override Host/Origin + allowedOrigins + trustedProxies (still causes pairing) | Don't use |
 | `v1.1.6-override-both-headers` | ⚠️ Superseded - Set X-Forwarded-For to 127.0.0.1 + Override Host AND Origin (still causes pairing) | Don't use |
 | `v1.1.5-override-host-header` | ⚠️ Incomplete - Only overrides Host header (missing Origin override, still causes pairing) | Don't use |
 | `v1.1.4-normalize-x-forwarded-for` | ⚠️ Incomplete - Only normalizes X-Forwarded-For (missing Host override) | Don't use |
@@ -373,7 +491,7 @@ No configuration needed - the template auto-detects `localhost` URLs.
 | `v1.1.2-trusted-proxies` | Incomplete - Only allowedOrigins + trustedProxies (missing header normalization) | Don't use |
 | `v1.1.1-railway-public-domain` | Incomplete - Only allowedOrigins (missing trustedProxies + header normalization) | Don't use |
 | `v1.1.0-allowed-origins` | Legacy - Manual `PUBLIC_URL` or auto-detect | If Railway env var changes |
-| `v1.0.0-railway-fix` | Legacy - Full header rewriting (including Origin) | Last resort fallback |
+| `v1.0.0-railway-fix` | Legacy - Full header rewriting (including Origin) - Same as v1.1.9 | Reference |
 
 ### Rollback Commands
 
@@ -570,8 +688,10 @@ The origin isn't in `allowedOrigins`. Check:
 
 | Version | Date | Changes |
 |---------|------|---------|
-| v1.1.7 | 2026-02-22 | DELETE X-Forwarded-For header instead of setting it to 127.0.0.1 (fixes "pairing required" when all headers are correct) |
-| v1.1.6 | 2026-02-22 | Override BOTH Host AND Origin headers to localhost - INCOMPLETE, still has pairing issue due to proxy header presence |
+| v1.1.9 | 2026-02-23 | **✅ WORKING** - Revert to v1.0.0 approach: DELETE ALL proxy headers + Override Host/Origin + NO allowedOrigins/trustedProxies config |
+| v1.1.8 | 2026-02-23 | Attempted to add dangerouslyDisableDeviceAuth - not committed |
+| v1.1.7 | 2026-02-22 | DELETE X-Forwarded-For + Override Host/Origin + allowedOrigins + trustedProxies - SUPPLANTED, still has pairing issue |
+| v1.1.6 | 2026-02-22 | Set X-Forwarded-For to 127.0.0.1 + Override Host AND Origin - SUPPLANTED, still has pairing issue |
 | v1.1.5 | 2026-02-22 | Override Host header to localhost - INCOMPLETE, still has pairing issue due to non-local Origin |
 | v1.1.4 | 2026-02-22 | Replace X-Forwarded-For with 127.0.0.1 - INCOMPLETE, still has pairing issue |
 | v1.1.3 | 2025-02-22 | Strip Railway proxy headers (X-Forwarded-*) - BROKEN, causes fwd=n/a |
@@ -582,5 +702,5 @@ The origin isn't in `allowedOrigins`. Check:
 
 ---
 
-**Document Version:** 1.1.7
-**Last Updated:** 2026-02-22
+**Document Version:** 1.1.9
+**Last Updated:** 2026-02-23
