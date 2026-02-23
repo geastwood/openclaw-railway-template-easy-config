@@ -397,60 +397,68 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
       ],
       models: [
         {
+          id: "minimaxai/minimax-m2.5",
+          name: "MiniMax M2.5 (default)",
+          description: "Lightweight model optimized for coding and reasoning",
+          contextWindow: 196600,
+          inputPrice: 0.30,
+          outputPrice: 1.20,
+        },
+        {
+          id: "qwen/qwen-3.5-397ba17b",
+          name: "Qwen3.5 397BA17B",
+          description: "High-performance large language model",
+          contextWindow: 262100,
+          inputPrice: 0.50,
+          outputPrice: 2.00,
+        },
+        {
+          id: "zai-org/glm-5",
+          name: "GLM 5",
+          description: "Next-generation Chinese-optimized large language model",
+          contextWindow: 204800,
+          inputPrice: 0.55,
+          outputPrice: 2.10,
+        },
+        {
+          id: "moonshot-ai/kimi-k2.5",
+          name: "Kimi K2.5",
+          description: "Long-context model with improved reasoning",
+          contextWindow: 262100,
+          inputPrice: 0.60,
+          outputPrice: 2.50,
+        },
+        {
+          id: "qwen/qwen-3-max-20260123",
+          name: "Qwen3 Max 20260123",
+          description: "Premium Qwen model with enhanced capabilities",
+          contextWindow: 262100,
+          inputPrice: 0.80,
+          outputPrice: 3.00,
+        },
+        {
           id: "minimaxai/minimax-m2.1",
-          name: "MiniMax M2.1 (default)",
+          name: "MiniMax M2.1",
           description: "Lightweight 10B model, optimized for coding",
           contextWindow: 196600,
           inputPrice: 0.30,
           outputPrice: 1.20,
         },
         {
-          id: "deepseek-ai/deepseek-r1",
-          name: "DeepSeek R1",
-          description: "Reasoning-optimized model with chain-of-thought",
-          contextWindow: 163800,
-          inputPrice: 0.28,
-          outputPrice: 0.40,
-        },
-        {
           id: "zai-org/glm-4.7",
-          name: "Z.AI GLM-4.7",
+          name: "GLM 4.7",
           description: "Chinese-optimized large language model",
           contextWindow: 202800,
           inputPrice: 0.52,
           outputPrice: 1.95,
         },
         {
-          id: "kwai-kat/kat-coder-pro",
-          name: "KwaiKAT Coder Pro",
-          description: "Specialized coding model with 256K context",
-          contextWindow: 256000,
-          inputPrice: 0.30,
-          outputPrice: 1.20,
-        },
-        {
-          id: "moonshot-ai/moonshot-v1-128k",
-          name: "Moonshot V1 128K",
-          description: "Long-context model (128K tokens)",
-          contextWindow: 262100,
-          inputPrice: 0.60,
-          outputPrice: 2.50,
-        },
-        {
-          id: "zhipu-ai/glm-4-5b-plus",
-          name: "Zhipu GLM-4 5B Plus",
-          description: "Efficient 5B parameter model",
-          contextWindow: 202800,
-          inputPrice: 0.44,
-          outputPrice: 1.74,
-        },
-        {
-          id: "qwen/qwen-2.5-coder-32b-instruct",
-          name: "Qwen 2.5 Coder 32B",
-          description: "Code-specialized model",
-          contextWindow: 262100,
-          inputPrice: 0.69,
-          outputPrice: 2.70,
+          id: "deepseek-ai/deepseek-v3.2",
+          name: "DeepSeek V3.2",
+          description: "Advanced reasoning model with chain-of-thought",
+          contextWindow: 163800,
+          inputPrice: 0.28,
+          outputPrice: 0.40,
         },
       ],
     },
@@ -858,7 +866,7 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
       // Configure Atlas Cloud if selected (using OpenAI-compatible endpoint)
       console.log(`[atlas] Checking authChoice: "${payload.authChoice}"`);
       if (payload.authChoice === "atlas-api-key") {
-        const atlasModel = payload.atlasModel || "minimaxai/minimax-m2.1";
+        const atlasModel = payload.atlasModel || "minimaxai/minimax-m2.5";
         console.log(`[atlas] Configuring Atlas Cloud provider with model: ${atlasModel}`);
 
         // Set models.mode to merge (doesn't clobber existing providers)
@@ -873,13 +881,14 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
           apiKey: "${OPENAI_API_KEY}",
           api: "openai-completions",
           models: [
+            { id: "minimaxai/minimax-m2.5", name: "MiniMax M2.5" },
+            { id: "qwen/qwen-3.5-397ba17b", name: "Qwen3.5 397BA17B" },
+            { id: "zai-org/glm-5", name: "GLM 5" },
+            { id: "moonshot-ai/kimi-k2.5", name: "Kimi K2.5" },
+            { id: "qwen/qwen-3-max-20260123", name: "Qwen3 Max 20260123" },
             { id: "minimaxai/minimax-m2.1", name: "MiniMax M2.1" },
-            { id: "deepseek-ai/deepseek-r1", name: "DeepSeek R1" },
-            { id: "zai-org/glm-4.7", name: "Z.AI GLM-4.7" },
-            { id: "kwai-kat/kat-coder-pro", name: "KwaiKAT Coder Pro" },
-            { id: "moonshot-ai/moonshot-v1-128k", name: "Moonshot V1 128K" },
-            { id: "zhipu-ai/glm-4-5b-plus", name: "Zhipu GLM-4 5B Plus" },
-            { id: "qwen/qwen-2.5-coder-32b-instruct", name: "Qwen 2.5 Coder 32B" },
+            { id: "zai-org/glm-4.7", name: "GLM 4.7" },
+            { id: "deepseek-ai/deepseek-v3.2", name: "DeepSeek V3.2" },
           ]
         };
 
