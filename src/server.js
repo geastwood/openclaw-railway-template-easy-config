@@ -976,6 +976,39 @@ app.post("/setup/api/pairing/approve", requireSetupAuth, async (req, res) => {
     .json({ ok: r.code === 0, output: r.output });
 });
 
+app.get("/setup/api/pairing/list", requireSetupAuth, async (_req, res) => {
+  const r = await runCmd(
+    OPENCLAW_NODE,
+    clawArgs(["pairing", "list", "--json"]),
+  );
+  if (r.code !== 0) {
+    return res.status(500).json({ ok: false, error: r.output });
+  }
+  try {
+    const pairings = JSON.parse(r.output);
+    return res.json({ ok: true, pairings });
+  } catch {
+    // If --json flag isn't supported, return raw output
+    return res.json({ ok: true, pairings: [], raw: r.output });
+  }
+});
+
+app.post("/setup/api/pairing/reject", requireSetupAuth, async (req, res) => {
+  const { channel, code } = req.body || {};
+  if (!channel || !code) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "Missing channel or code" });
+  }
+  const r = await runCmd(
+    OPENCLAW_NODE,
+    clawArgs(["pairing", "reject", String(channel), String(code)]),
+  );
+  return res
+    .status(r.code === 0 ? 200 : 500)
+    .json({ ok: r.code === 0, output: r.output });
+});
+
 app.post("/setup/api/reset", requireSetupAuth, async (_req, res) => {
   // Minimal reset: delete the config file so /setup can rerun.
   // Keep credentials/sessions/workspace by default.
