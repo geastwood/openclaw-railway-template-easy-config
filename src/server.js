@@ -274,6 +274,52 @@ async function restartGateway() {
   return ensureGatewayRunning();
 }
 
+const WATCHDOG_INTERVAL_MS = Number(
+  process.env.OPENCLAW_WATCHDOG_INTERVAL_MS || "60000",
+);
+const WATCHDOG_TIMEOUT_MS = Number(
+  process.env.OPENCLAW_WATCHDOG_TIMEOUT_MS || "5000",
+);
+let watchdogTimer = null;
+let watchdogBusy = false;
+
+async function checkGatewayHealth() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), WATCHDOG_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${GATEWAY_TARGET}/health`, {
+      headers: { Authorization: `Bearer ${OPENCLAW_GATEWAY_TOKEN}` },
+      signal: controller.signal,
+    });
+    return { ok: res.ok };
+  } catch (err) {
+    return { ok: false, error: err };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function startGatewayWatchdog() {
+  if (process.env.OPENCLAW_WATCHDOG_DISABLED === "true") return;
+  if (watchdogTimer) return;
+  watchdogTimer = setInterval(async () => {
+    if (watchdogBusy || gatewayStarting) return;
+    if (!isConfigured()) return;
+    watchdogBusy = true;
+    try {
+      const health = await checkGatewayHealth();
+      if (!health.ok) {
+        console.warn("[watchdog] Gateway unhealthy, restarting...");
+        await restartGateway();
+      }
+    } catch (err) {
+      console.warn("[watchdog] Unexpected error:", err);
+    } finally {
+      watchdogBusy = false;
+    }
+  }, WATCHDOG_INTERVAL_MS);
+}
+
 function requireSetupAuth(req, res, next) {
   if (!SETUP_PASSWORD) {
     return res
@@ -1485,6 +1531,8 @@ const server = app.listen(PORT, () => {
   console.log(`[wrapper] setup wizard: http://localhost:${PORT}/setup`);
   console.log(`[wrapper] configured: ${isConfigured()}`);
 });
+
+startGatewayWatchdog();
 
 // Handle WebSocket upgrades
 server.on("upgrade", async (req, socket, head) => {
