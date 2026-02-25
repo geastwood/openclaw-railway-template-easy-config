@@ -1091,6 +1091,224 @@ function stripProxyHeaders(req, res, next) {
   next();
 }
 
+// ============================================================
+// MeinClaw Management API — /manage/*
+// These endpoints allow the MeinClaw dashboard to programmatically
+// control the OpenClaw instance (config, channels, setup, restart).
+// Protected by the same SETUP_PASSWORD auth as the setup wizard.
+// ============================================================
+
+// Programmatic setup — runs onboarding without the setup wizard UI
+app.post("/manage/setup", requireSetupAuth, async (req, res) => {
+  try {
+    const payload = req.body || {};
+    const onboardArgs = buildOnboardArgs(payload);
+
+    if (isConfigured() && !payload.force) {
+      // Already configured — just ensure gateway is running
+      await ensureGatewayRunning();
+      return res.json({ ok: true, alreadyConfigured: true });
+    }
+
+    if (payload.force) {
+      // Force re-setup: delete existing config
+      fs.rmSync(configPath(), { force: true });
+    }
+
+    fs.mkdirSync(STATE_DIR, { recursive: true });
+    fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
+
+    const onboard = await runCmd(OPENCLAW_NODE, clawArgs(onboardArgs));
+    const ok = onboard.code === 0 && isConfigured();
+
+    if (ok) {
+      // Sync gateway token and binding config
+      await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.mode", "local"]));
+      await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.auth.mode", "token"]));
+      await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.auth.token", OPENCLAW_GATEWAY_TOKEN]));
+      await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.bind", "loopback"]));
+      await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.port", String(INTERNAL_GATEWAY_PORT)]));
+      await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.controlUi.allowInsecureAuth", "true"]));
+
+      await restartGateway();
+    }
+
+    return res.status(ok ? 200 : 500).json({ ok, output: onboard.output });
+  } catch (err) {
+    console.error("[/manage/setup]", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// Read config — returns full or partial OpenClaw config
+app.get("/manage/config", requireSetupAuth, async (req, res) => {
+  try {
+    const key = req.query.key;
+    if (key) {
+      const result = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", key]));
+      return res.json({ ok: result.code === 0, key, value: result.output.trim() });
+    }
+
+    // Return full config file
+    if (!fs.existsSync(configPath())) {
+      return res.json({ ok: true, configured: false, config: {} });
+    }
+    const config = JSON.parse(fs.readFileSync(configPath(), "utf8"));
+    // Redact sensitive fields
+    if (config?.gateway?.auth?.token) config.gateway.auth.token = "***";
+    return res.json({ ok: true, configured: true, config });
+  } catch (err) {
+    console.error("[/manage/config GET]", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// Update config — set one or more config key/value pairs
+app.put("/manage/config", requireSetupAuth, async (req, res) => {
+  try {
+    const entries = req.body; // { "key.path": "value", ... }
+    if (!entries || typeof entries !== "object") {
+      return res.status(400).json({ ok: false, error: "Body must be a JSON object of key/value pairs" });
+    }
+
+    const results = [];
+    for (const [key, value] of Object.entries(entries)) {
+      let args;
+      if (typeof value === "object") {
+        args = clawArgs(["config", "set", "--json", key, JSON.stringify(value)]);
+      } else {
+        args = clawArgs(["config", "set", key, String(value)]);
+      }
+      const result = await runCmd(OPENCLAW_NODE, args);
+      results.push({ key, ok: result.code === 0, output: result.output.trim() });
+    }
+
+    // Restart gateway to pick up config changes
+    if (isConfigured() && gatewayProc) {
+      await restartGateway();
+    }
+
+    const allOk = results.every((r) => r.ok);
+    return res.status(allOk ? 200 : 500).json({ ok: allOk, results });
+  } catch (err) {
+    console.error("[/manage/config PUT]", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// Add a messaging channel (telegram, discord, slack, etc.)
+app.post("/manage/channels/add", requireSetupAuth, async (req, res) => {
+  try {
+    const { channel, config: channelConfig } = req.body;
+    if (!channel) {
+      return res.status(400).json({ ok: false, error: "Missing 'channel' field" });
+    }
+
+    // Write channel config directly via config set (more reliable than `channels add`)
+    const configKey = `channels.${channel}`;
+    const configValue = channelConfig || { enabled: true };
+    if (configValue.enabled === undefined) configValue.enabled = true;
+
+    const result = await runCmd(
+      OPENCLAW_NODE,
+      clawArgs(["config", "set", "--json", configKey, JSON.stringify(configValue)])
+    );
+
+    // Restart gateway to pick up the new channel
+    if (isConfigured() && gatewayProc) {
+      await restartGateway();
+    }
+
+    // Verify the channel was added
+    const verify = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", configKey]));
+
+    return res.json({
+      ok: result.code === 0,
+      output: result.output.trim(),
+      verify: verify.output.trim(),
+    });
+  } catch (err) {
+    console.error("[/manage/channels/add]", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// Remove a messaging channel
+app.post("/manage/channels/remove", requireSetupAuth, async (req, res) => {
+  try {
+    const { channel } = req.body;
+    if (!channel) {
+      return res.status(400).json({ ok: false, error: "Missing 'channel' field" });
+    }
+
+    // Disable the channel by setting enabled: false, then remove it
+    const result = await runCmd(
+      OPENCLAW_NODE,
+      clawArgs(["config", "set", "--json", `channels.${channel}`, JSON.stringify({ enabled: false })])
+    );
+
+    // Restart gateway to disconnect the channel
+    if (isConfigured() && gatewayProc) {
+      await restartGateway();
+    }
+
+    return res.json({ ok: result.code === 0, output: result.output.trim() });
+  } catch (err) {
+    console.error("[/manage/channels/remove]", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// Instance status — version, configured state, gateway status, channels
+app.get("/manage/status", requireSetupAuth, async (_req, res) => {
+  try {
+    const [version, health] = await Promise.all([
+      runCmd(OPENCLAW_NODE, clawArgs(["--version"])),
+      isConfigured() && gatewayProc
+        ? fetch(`${GATEWAY_TARGET}/health`, {
+            headers: { Authorization: `Bearer ${OPENCLAW_GATEWAY_TOKEN}` },
+          }).then((r) => r.ok ? "healthy" : "unhealthy").catch(() => "unreachable")
+        : Promise.resolve("not running"),
+    ]);
+
+    let channels = {};
+    if (isConfigured()) {
+      const channelsResult = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "channels"]));
+      try {
+        channels = JSON.parse(channelsResult.output.trim());
+      } catch {
+        channels = { raw: channelsResult.output.trim() };
+      }
+    }
+
+    return res.json({
+      ok: true,
+      configured: isConfigured(),
+      gatewayRunning: !!gatewayProc,
+      gatewayHealth: health,
+      openclawVersion: version.output.trim(),
+      channels,
+    });
+  } catch (err) {
+    console.error("[/manage/status]", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// Restart the gateway process
+app.post("/manage/restart", requireSetupAuth, async (_req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.status(400).json({ ok: false, error: "Instance not configured yet" });
+    }
+    await restartGateway();
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("[/manage/restart]", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
 app.use(stripProxyHeaders, async (req, res) => {
   // If not configured, force users to /setup for any non-setup routes.
   if (!isConfigured() && !req.path.startsWith("/setup")) {
