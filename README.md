@@ -8,7 +8,7 @@ This repo packages **Openclaw** for Railway with a small **/setup** web wizard s
 - A friendly **Setup Wizard** at `/setup` (protected by a password)
 - Persistent state via **Railway Volume** (so config/credentials/memory survive redeploys)
 - One-click **Export backup** (so users can migrate off Railway later)
-- **7 Pre-installed Skills** from ClawHub:
+- **9 Pre-installed Skills** from ClawHub:
   - **gog** - Google Workspace CLI (Gmail, Calendar, Drive, Contacts, Sheets, Docs)
   - **summarize** - Summarize URLs/files (web, PDFs, images, audio, YouTube)
   - **weather** - Weather forecasts (no API key required)
@@ -16,6 +16,8 @@ This repo packages **Openclaw** for Railway with a small **/setup** web wizard s
   - **daily-ai-news** - AI news aggregator
   - **market-news-analyst** - Financial market analysis
   - **pdf** - PDF manipulation toolkit
+  - **nano-banana-pro** - Gemini image generation/editing
+  - **goplaces** - Google Places search/details/resolve
 
 ## How it works (high level)
 
@@ -62,6 +64,19 @@ The setup wizard supports these AI providers:
 - **Qwen**
 - **Synthetic**
 - **OpenCode Zen**
+
+## Hosted usage reporting (ClawClaw)
+
+When these variables are set, the template reports usage back to ClawClaw:
+
+- `CLAWCLAW_USAGE_URL`
+- `CLAWCLAW_USAGE_SECRET`
+
+Reported dimensions:
+
+- Chat usage via `/v1/chat/completions` success count
+- `nano-banana-pro` successful image generations (`provider=gemini`)
+- `goplaces` successful invocations with endpoint metadata (`provider=google_places`)
 
 ## Getting chat tokens (so you don’t have to scramble)
 

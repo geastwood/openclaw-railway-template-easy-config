@@ -60,6 +60,24 @@ RUN apt-get update \
     sudo \
   && rm -rf /var/lib/apt/lists/*
 
+# Install uv for skills that use inline Python script dependencies (for example nano-banana-pro).
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+  && mv /root/.local/bin/uv /usr/local/bin/uv \
+  && if [ -f /root/.local/bin/uvx ]; then mv /root/.local/bin/uvx /usr/local/bin/uvx; fi
+
+# Install goplaces CLI and keep the real binary at /usr/local/bin/goplaces-real.
+RUN set -eux; \
+  arch="$(dpkg --print-architecture)"; \
+  case "${arch}" in \
+    amd64) go_arch="x86_64" ;; \
+    arm64) go_arch="arm64" ;; \
+    *) echo "Unsupported architecture: ${arch}" >&2; exit 1 ;; \
+  esac; \
+  curl -fsSL "https://github.com/steipete/goplaces/releases/latest/download/goplaces_Linux_${go_arch}.tar.gz" \
+    | tar -xz -C /usr/local/bin goplaces; \
+  mv /usr/local/bin/goplaces /usr/local/bin/goplaces-real; \
+  chmod +x /usr/local/bin/goplaces-real
+
 # Install Homebrew (must run as non-root user)
 # Create a user for Homebrew installation, install it, then make it accessible to all users
 RUN useradd -m -s /bin/bash linuxbrew \
@@ -130,6 +148,9 @@ RUN printf '%s\n' '#!/usr/bin/env bash' 'exec node /openclaw/dist/entry.js "$@"'
   && chmod +x /usr/local/bin/openclaw
 
 COPY src ./src
+
+# Wrap goplaces so successful invocations emit ClawClaw usage events.
+RUN install -m 0755 src/bin/goplaces-wrapper.sh /usr/local/bin/goplaces
 
 # Copy ClawHub skills (with installed dependencies)
 RUN mkdir -p /data/.openclaw && cp -r /tmp/skills /data/.openclaw/skills && rm -rf /tmp/skills
