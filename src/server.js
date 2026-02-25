@@ -672,6 +672,49 @@ function runCmd(cmd, args, opts = {}, extraEnv = {}) {
   });
 }
 
+const DEFAULT_STT_MODEL = process.env.OPENCLAW_DEFAULT_STT_MODEL?.trim() || "whisper-1";
+const DEFAULT_TTS_OPENAI_VOICE =
+  process.env.OPENCLAW_DEFAULT_TTS_VOICE?.trim() || "alloy";
+const DEFAULT_TTS_AUTO_MODE = "inbound";
+
+async function setConfigValue(key, value) {
+  const args =
+    value !== null && typeof value === "object"
+      ? clawArgs(["config", "set", "--json", key, JSON.stringify(value)])
+      : clawArgs(["config", "set", key, String(value)]);
+  return runCmd(OPENCLAW_NODE, args);
+}
+
+async function applyDefaultVoiceConfig(options = {}) {
+  const preferOpenAi = options.preferOpenAi === true;
+  const results = [];
+  const applyOne = async (key, value) => {
+    const result = await setConfigValue(key, value);
+    results.push({
+      key,
+      ok: result.code === 0,
+      output: result.output?.trim() || "",
+    });
+  };
+
+  // Enable inbound audio transcription and voice replies by default.
+  await applyOne("tools.media.audio.enabled", true);
+  await applyOne("messages.tts.auto", DEFAULT_TTS_AUTO_MODE);
+
+  if (preferOpenAi) {
+    await applyOne("tools.media.audio.models", [
+      { provider: "openai", model: DEFAULT_STT_MODEL },
+    ]);
+    await applyOne("messages.tts.provider", "openai");
+    await applyOne("messages.tts.openai.voice", DEFAULT_TTS_OPENAI_VOICE);
+  } else {
+    // Keep voice replies available even without an OpenAI key.
+    await applyOne("messages.tts.provider", "edge");
+  }
+
+  return results;
+}
+
 app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
   try {
     if (isConfigured()) {
@@ -956,6 +999,19 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         console.log(`[atlas] Skipping Atlas Cloud configuration (authChoice was: ${payload.authChoice})`);
       }
 
+      // Apply voice defaults (STT + TTS) for managed Telegram usage.
+      const voiceConfigResults = await applyDefaultVoiceConfig({
+        preferOpenAi:
+          Boolean(process.env.OPENAI_API_KEY?.trim()) ||
+          payload.authChoice === "openai-api-key" ||
+          payload.authChoice === "atlas-api-key",
+      });
+      for (const r of voiceConfigResults) {
+        if (!r.ok) {
+          extra += `\n[voice] failed to set ${r.key}: ${r.output || "unknown error"}`;
+        }
+      }
+
       // Apply changes immediately.
       await restartGateway();
     }
@@ -1214,6 +1270,14 @@ app.post("/manage/setup", requireSetupAuth, async (req, res) => {
       await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.bind", "loopback"]));
       await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.port", String(INTERNAL_GATEWAY_PORT)]));
       await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.controlUi.allowInsecureAuth", "true"]));
+
+      // Apply voice defaults (STT + TTS) in API-driven setup flow used by MeinClaw.
+      await applyDefaultVoiceConfig({
+        preferOpenAi:
+          Boolean(process.env.OPENAI_API_KEY?.trim()) ||
+          payload.authChoice === "openai-api-key" ||
+          payload.authChoice === "atlas-api-key",
+      });
 
       await restartGateway();
     }
