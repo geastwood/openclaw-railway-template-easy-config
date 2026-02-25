@@ -18,11 +18,51 @@ const WORKSPACE_DIR = "/data/workspace";
 // Protect /setup with a user-provided password.
 const SETUP_PASSWORD = process.env.SETUP_PASSWORD?.trim();
 
+// Clawclaw usage reporting
+const CLAWCLAW_INSTANCE_ID = process.env.CLAWCLAW_INSTANCE_ID?.trim();
+const CLAWCLAW_USAGE_URL = process.env.CLAWCLAW_USAGE_URL?.trim();
+const CLAWCLAW_USAGE_SECRET = process.env.CLAWCLAW_USAGE_SECRET?.trim();
+
 // Debug logging helper
 const DEBUG = process.env.OPENCLAW_TEMPLATE_DEBUG?.toLowerCase() === "true";
 function debug(...args) {
   if (DEBUG) console.log(...args);
 }
+
+// ── Usage reporting to Clawclaw ──────────────────────────────────
+let pendingMessages = 0;
+
+async function reportUsage() {
+  if (!CLAWCLAW_USAGE_URL || pendingMessages === 0) return;
+  const count = pendingMessages;
+  pendingMessages = 0; // reset before async call so new messages aren't lost
+  try {
+    const res = await fetch(CLAWCLAW_USAGE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageCount: count, apiKey: CLAWCLAW_USAGE_SECRET }),
+    });
+    if (!res.ok) {
+      console.error(`[usage] Failed to report ${count} messages: ${res.status}`);
+      pendingMessages += count; // put them back on failure
+    } else {
+      debug(`[usage] Reported ${count} messages`);
+    }
+  } catch (err) {
+    console.error("[usage] Report failed:", err.message);
+    pendingMessages += count; // put them back on failure
+  }
+}
+
+// Flush usage every 60 seconds
+setInterval(reportUsage, 60_000);
+
+// Flush on graceful shutdown
+process.on("SIGTERM", async () => {
+  debug("[usage] SIGTERM received, flushing usage...");
+  await reportUsage();
+  process.exit(0);
+});
 
 // Gateway admin token - use SETUP_PASSWORD for simplicity
 // This protects both the /setup wizard and the OpenClaw gateway
@@ -1086,6 +1126,18 @@ proxy.on("error", (err, _req, _res) => {
 // Inject auth token into HTTP proxy requests
 proxy.on("proxyReq", (proxyReq, req, res) => {
   proxyReq.setHeader("Authorization", `Bearer ${OPENCLAW_GATEWAY_TOKEN}`);
+});
+
+// Count successful chat completions for usage reporting
+proxy.on("proxyRes", (proxyRes, req) => {
+  if (
+    req.url?.includes("/v1/chat/completions") &&
+    proxyRes.statusCode >= 200 &&
+    proxyRes.statusCode < 300
+  ) {
+    pendingMessages++;
+    debug(`[usage] Chat completion counted (pending: ${pendingMessages})`);
+  }
 });
 
 // Inject auth token into WebSocket upgrade requests
