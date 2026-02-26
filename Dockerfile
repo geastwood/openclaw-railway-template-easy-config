@@ -69,11 +69,20 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
 RUN set -eux; \
   arch="$(dpkg --print-architecture)"; \
   case "${arch}" in \
-    amd64) go_arch="x86_64" ;; \
-    arm64) go_arch="arm64" ;; \
+    amd64) asset_regex='(linux_amd64|Linux_x86_64)\.tar\.gz$' ;; \
+    arm64) asset_regex='(linux_arm64|Linux_arm64)\.tar\.gz$' ;; \
     *) echo "Unsupported architecture: ${arch}" >&2; exit 1 ;; \
   esac; \
-  curl -fsSL "https://github.com/steipete/goplaces/releases/latest/download/goplaces_Linux_${go_arch}.tar.gz" \
+  release_json="$(curl -fsSL https://api.github.com/repos/steipete/goplaces/releases/latest)"; \
+  asset_url="$(printf '%s\n' "${release_json}" \
+    | grep -Eo 'https://github.com/[^"]+/releases/download/[^"]+' \
+    | grep -E "${asset_regex}" \
+    | head -n1 || true)"; \
+  if [ -z "${asset_url}" ]; then \
+    echo "Could not find a matching goplaces release asset for ${arch}" >&2; \
+    exit 1; \
+  fi; \
+  curl -fsSL "${asset_url}" \
     | tar -xz -C /usr/local/bin goplaces; \
   mv /usr/local/bin/goplaces /usr/local/bin/goplaces-real; \
   chmod +x /usr/local/bin/goplaces-real
